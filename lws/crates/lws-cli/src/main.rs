@@ -72,6 +72,12 @@ enum Commands {
         #[arg(long)]
         force: bool,
     },
+    /// Uninstall lws from the system
+    Uninstall {
+        /// Also remove all wallet data and config (~/.lws)
+        #[arg(long)]
+        purge: bool,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -127,5 +133,6 @@ fn run(cli: Cli) -> Result<(), CliError> {
         } => commands::wallet::create(&name, &chain, words),
         Commands::ListWallets => commands::wallet::list(),
         Commands::Update { force } => commands::update::run(force),
+        Commands::Uninstall { purge } => commands::uninstall::run(purge),
     }
 }
