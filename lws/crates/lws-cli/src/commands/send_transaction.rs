@@ -1,8 +1,8 @@
 use lws_core::{ChainType, Config};
-use lws_signer::{signer_for_chain, HdDeriver, Mnemonic};
+use lws_signer::{signer_for_chain, HdDeriver, Mnemonic, SecretBytes};
 use std::process::Command;
-use zeroize::Zeroize;
 
+use super::WalletSecret;
 use crate::{audit, parse_chain, CliError};
 
 pub fn run(
@@ -14,21 +14,26 @@ pub fn run(
     rpc_url_override: Option<&str>,
 ) -> Result<(), CliError> {
     let chain = parse_chain(chain_str)?;
-
-    // 1. Sign the transaction
-    let mut mnemonic_str = super::resolve_mnemonic(wallet_name)?;
-    let mnemonic = Mnemonic::from_phrase(&mnemonic_str)?;
-    mnemonic_str.zeroize();
+    let wallet_secret = super::resolve_wallet_secret(wallet_name)?;
 
     let tx_hex_clean = tx_hex.strip_prefix("0x").unwrap_or(tx_hex);
     let tx_bytes = hex::decode(tx_hex_clean)
         .map_err(|e| CliError::InvalidArgs(format!("invalid hex transaction: {e}")))?;
 
     let signer = signer_for_chain(chain.chain_type);
-    let path = signer.default_derivation_path(index);
-    let curve = signer.curve();
 
-    let key = HdDeriver::derive_from_mnemonic_cached(&mnemonic, "", &path, curve)?;
+    let key = match wallet_secret {
+        WalletSecret::Mnemonic(phrase) => {
+            let mnemonic = Mnemonic::from_phrase(&phrase)?;
+            let path = signer.default_derivation_path(index);
+            let curve = signer.curve();
+            HdDeriver::derive_from_mnemonic_cached(&mnemonic, "", &path, curve)?
+        }
+        WalletSecret::PrivateKeys(secret) => {
+            extract_key_for_curve(secret.expose(), signer.curve())?
+        }
+    };
+
     let output = signer.sign_transaction(key.expose(), &tx_bytes)?;
 
     // 2. Resolve RPC URL using exact chain_id
@@ -223,6 +228,24 @@ fn curl_post_json(url: &str, body: &str) -> Result<String, CliError> {
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn extract_key_for_curve(
+    json_bytes: &[u8],
+    curve: lws_signer::Curve,
+) -> Result<SecretBytes, CliError> {
+    let s = String::from_utf8(json_bytes.to_vec())
+        .map_err(|_| CliError::InvalidArgs("invalid key data".into()))?;
+    let obj: serde_json::Value = serde_json::from_str(&s)?;
+    let field = match curve {
+        lws_signer::Curve::Secp256k1 => "secp256k1",
+        lws_signer::Curve::Ed25519 => "ed25519",
+    };
+    let hex_key = obj[field].as_str()
+        .ok_or_else(|| CliError::InvalidArgs(format!("missing {field} key in wallet")))?;
+    let bytes = hex::decode(hex_key)
+        .map_err(|e| CliError::InvalidArgs(format!("invalid {field} hex: {e}")))?;
+    Ok(SecretBytes::from_slice(&bytes))
 }
 
 /// Extract a string field from a JSON-RPC response.
