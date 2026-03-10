@@ -10,7 +10,7 @@ metadata:
         - node
         - python3
     emoji: "\U0001F511"
-    homepage: https://github.com/dawnlabsai/lws
+    homepage: https://openwallet.sh
     os:
       - darwin
       - linux
