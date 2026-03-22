@@ -4,7 +4,7 @@
 //!
 //! ```ignore
 //! let result = ows_pay::pay(&wallet, "https://api.example.com/data", "GET", None).await?;
-//! let services = ows_pay::discover(None).await?;
+//! let services = ows_pay::discover(None, None, None).await?;
 //! ```
 
 pub(crate) mod chains;

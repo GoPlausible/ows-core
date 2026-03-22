@@ -77,3 +77,71 @@ pub fn chain_by_name(name: &str) -> Option<&'static ChainMapping> {
             c.name.to_lowercase() == lower || c.ows_chain == lower || c.moonpay_chain == lower
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_supported_chains_have_eip155_caip2() {
+        for chain in SUPPORTED_CHAINS {
+            assert!(
+                chain.caip2.starts_with("eip155:"),
+                "{} has non-EVM CAIP-2: {}",
+                chain.name,
+                chain.caip2
+            );
+        }
+    }
+
+    #[test]
+    fn default_chain_is_base() {
+        assert_eq!(DEFAULT_CHAIN.name, "Base");
+    }
+
+    #[test]
+    fn lookup_by_caip2() {
+        let chain = chain_by_caip2("eip155:8453").unwrap();
+        assert_eq!(chain.name, "Base");
+    }
+
+    #[test]
+    fn lookup_by_caip2_not_found() {
+        assert!(chain_by_caip2("eip155:99999").is_none());
+    }
+
+    #[test]
+    fn lookup_by_caip2_includes_testnets() {
+        let chain = chain_by_caip2("eip155:84532").unwrap();
+        assert_eq!(chain.name, "Base Sepolia");
+    }
+
+    #[test]
+    fn lookup_by_name_case_insensitive() {
+        assert!(chain_by_name("base").is_some());
+        assert!(chain_by_name("Base").is_some());
+        assert!(chain_by_name("BASE").is_some());
+    }
+
+    #[test]
+    fn lookup_by_name_ows_chain() {
+        let chain = chain_by_name("ethereum").unwrap();
+        assert_eq!(chain.caip2, "eip155:1");
+    }
+
+    #[test]
+    fn lookup_by_name_not_found() {
+        assert!(chain_by_name("solana").is_none());
+        assert!(chain_by_name("bitcoin").is_none());
+    }
+
+    #[test]
+    fn all_chains_have_consistent_fields() {
+        for chain in SUPPORTED_CHAINS.iter().chain(TESTNET_CHAINS.iter()) {
+            assert!(!chain.name.is_empty());
+            assert!(!chain.ows_chain.is_empty());
+            assert!(!chain.caip2.is_empty());
+            assert!(!chain.moonpay_chain.is_empty());
+        }
+    }
+}

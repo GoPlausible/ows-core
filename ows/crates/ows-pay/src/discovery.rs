@@ -149,3 +149,157 @@ fn truncate(s: &str, max: usize) -> String {
         first_line.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -----------------------------------------------------------------------
+    // format_usdc
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn format_usdc_zero() {
+        assert_eq!(format_usdc("0"), "$0.00");
+    }
+
+    #[test]
+    fn format_usdc_one_cent() {
+        assert_eq!(format_usdc("10000"), "$0.01");
+    }
+
+    #[test]
+    fn format_usdc_one_dollar() {
+        assert_eq!(format_usdc("1000000"), "$1.00");
+    }
+
+    #[test]
+    fn format_usdc_fractional() {
+        assert_eq!(format_usdc("1500000"), "$1.5");
+    }
+
+    #[test]
+    fn format_usdc_large() {
+        assert_eq!(format_usdc("100000000"), "$100.00");
+    }
+
+    #[test]
+    fn format_usdc_sub_cent() {
+        assert_eq!(format_usdc("1"), "$0.000001");
+    }
+
+    #[test]
+    fn format_usdc_non_numeric() {
+        assert_eq!(format_usdc("abc"), "$0.00");
+    }
+
+    #[test]
+    fn format_usdc_empty() {
+        assert_eq!(format_usdc(""), "$0.00");
+    }
+
+    // -----------------------------------------------------------------------
+    // truncate
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn truncate_short_string() {
+        assert_eq!(truncate("hello", 80), "hello");
+    }
+
+    #[test]
+    fn truncate_long_string() {
+        let long = "a".repeat(100);
+        let result = truncate(&long, 20);
+        assert!(result.len() <= 20);
+        assert!(result.ends_with("..."));
+    }
+
+    #[test]
+    fn truncate_multiline_uses_first_line() {
+        assert_eq!(truncate("first\nsecond\nthird", 80), "first");
+    }
+
+    #[test]
+    fn truncate_empty() {
+        assert_eq!(truncate("", 80), "");
+    }
+
+    // -----------------------------------------------------------------------
+    // testnet filtering (unit-level, no network)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn testnet_list_contains_expected_entries() {
+        assert!(TESTNETS.contains(&"base-sepolia"));
+        assert!(TESTNETS.contains(&"eip155:84532"));
+        assert!(TESTNETS.contains(&"eip155:11155111"));
+        assert!(TESTNETS.contains(&"solana-devnet"));
+    }
+
+    #[test]
+    fn testnet_check_matches() {
+        let network = "base-sepolia";
+        assert!(TESTNETS.iter().any(|t| network.contains(t)));
+    }
+
+    #[test]
+    fn mainnet_check_does_not_match() {
+        let network = "base";
+        assert!(!TESTNETS.iter().any(|t| network.contains(t)));
+    }
+
+    // -----------------------------------------------------------------------
+    // discover_all (live, ignored by default)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_discover_returns_services() {
+        let result = discover_all(None, Some(10), Some(0)).await.unwrap();
+        assert!(result.total > 0);
+        assert!(!result.services.is_empty());
+        assert_eq!(result.limit, 10);
+        assert_eq!(result.offset, 0);
+
+        // No testnets should appear.
+        for svc in &result.services {
+            assert!(
+                !TESTNETS.iter().any(|t| svc.network.contains(t)),
+                "testnet {} leaked through",
+                svc.network
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_discover_pagination() {
+        let page1 = discover_all(None, Some(5), Some(0)).await.unwrap();
+        let page2 = discover_all(None, Some(5), Some(5)).await.unwrap();
+
+        // Pages should have same total.
+        assert_eq!(page1.total, page2.total);
+
+        // Pages should have different services (unless one is empty due to testnet filtering).
+        if !page1.services.is_empty() && !page2.services.is_empty() {
+            assert_ne!(page1.services[0].url, page2.services[0].url);
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_discover_query_filters() {
+        let result = discover_all(Some("heurist"), Some(50), Some(0))
+            .await
+            .unwrap();
+        for svc in &result.services {
+            let combined = format!("{} {}", svc.url, svc.description).to_lowercase();
+            assert!(
+                combined.contains("heurist"),
+                "service should match query: {}",
+                svc.url
+            );
+        }
+    }
+}

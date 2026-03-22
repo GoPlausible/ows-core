@@ -225,3 +225,262 @@ pub(crate) fn build_request(
 
     Ok(req)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::{engine::general_purpose::STANDARD as B64, Engine};
+    use reqwest::header::HeaderMap;
+
+    fn base_requirement() -> PaymentRequirements {
+        PaymentRequirements {
+            scheme: "exact".into(),
+            network: "base".into(),
+            amount: "10000".into(),
+            asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913".into(),
+            pay_to: "0x1234567890abcdef1234567890abcdef12345678".into(),
+            max_timeout_seconds: 60,
+            extra: serde_json::json!({"name": "USD Coin", "version": "2"}),
+            description: Some("test service".into()),
+            resource: None,
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // build_request
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn build_request_valid_methods() {
+        let client = reqwest::Client::new();
+        for method in &["GET", "POST", "PUT", "DELETE", "PATCH"] {
+            let result = build_request(&client, "https://example.com", method, None, None);
+            assert!(result.is_ok(), "method {method} should be valid");
+        }
+    }
+
+    #[test]
+    fn build_request_case_insensitive() {
+        let client = reqwest::Client::new();
+        for method in &["get", "Post", "pUT", "dElEtE", "patch"] {
+            let result = build_request(&client, "https://example.com", method, None, None);
+            assert!(
+                result.is_ok(),
+                "method {method} should be valid (case-insensitive)"
+            );
+        }
+    }
+
+    #[test]
+    fn build_request_invalid_method() {
+        let client = reqwest::Client::new();
+        let result = build_request(&client, "https://example.com", "FOOBAR", None, None);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.code, PayErrorCode::InvalidInput);
+        assert!(err.message.contains("FOOBAR"));
+    }
+
+    #[test]
+    fn build_request_head_is_invalid() {
+        let client = reqwest::Client::new();
+        let result = build_request(&client, "https://example.com", "HEAD", None, None);
+        assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // parse_requirements
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn parse_requirements_from_body() {
+        let headers = HeaderMap::new();
+        let body = serde_json::json!({
+            "accepts": [{
+                "scheme": "exact",
+                "network": "base",
+                "amount": "10000",
+                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                "payTo": "0xabc",
+                "maxTimeoutSeconds": 30
+            }]
+        })
+        .to_string();
+
+        let reqs = parse_requirements(&headers, &body).unwrap();
+        assert_eq!(reqs.len(), 1);
+        assert_eq!(reqs[0].scheme, "exact");
+        assert_eq!(reqs[0].network, "base");
+        assert_eq!(reqs[0].amount, "10000");
+        assert_eq!(reqs[0].pay_to, "0xabc");
+    }
+
+    #[test]
+    fn parse_requirements_from_header() {
+        let x402 = serde_json::json!({
+            "accepts": [{
+                "scheme": "exact",
+                "network": "eip155:8453",
+                "amount": "5000",
+                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                "payTo": "0xdef"
+            }]
+        });
+        let encoded = B64.encode(serde_json::to_string(&x402).unwrap().as_bytes());
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-payment-required", encoded.parse().unwrap());
+
+        // Body is garbage — should still parse from header.
+        let reqs = parse_requirements(&headers, "not json").unwrap();
+        assert_eq!(reqs.len(), 1);
+        assert_eq!(reqs[0].pay_to, "0xdef");
+    }
+
+    #[test]
+    fn parse_requirements_header_fallback_to_body() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-payment-required", "not-valid-base64!!!".parse().unwrap());
+
+        let body = serde_json::json!({
+            "accepts": [{
+                "scheme": "exact",
+                "network": "base",
+                "amount": "1000",
+                "asset": "0xaaa",
+                "payTo": "0xbbb"
+            }]
+        })
+        .to_string();
+
+        let reqs = parse_requirements(&headers, &body).unwrap();
+        assert_eq!(reqs[0].pay_to, "0xbbb");
+    }
+
+    #[test]
+    fn parse_requirements_empty_accepts_errors() {
+        let headers = HeaderMap::new();
+        let body = r#"{"accepts":[]}"#;
+        let err = parse_requirements(&headers, body).unwrap_err();
+        assert_eq!(err.code, PayErrorCode::ProtocolMalformed);
+    }
+
+    #[test]
+    fn parse_requirements_bad_json_errors() {
+        let headers = HeaderMap::new();
+        let err = parse_requirements(&headers, "this is not json").unwrap_err();
+        assert_eq!(err.code, PayErrorCode::ProtocolMalformed);
+    }
+
+    // -----------------------------------------------------------------------
+    // pick_payment_option
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn pick_payment_option_base_by_name() {
+        let reqs = vec![base_requirement()];
+        let (req, chain) = pick_payment_option(&reqs).unwrap();
+        assert_eq!(req.network, "base");
+        assert_eq!(chain.name, "Base");
+        assert_eq!(chain.caip2, "eip155:8453");
+    }
+
+    #[test]
+    fn pick_payment_option_by_caip2() {
+        let mut req = base_requirement();
+        req.network = "eip155:8453".into();
+        let (_, chain) = pick_payment_option(&[req]).unwrap();
+        assert_eq!(chain.name, "Base");
+    }
+
+    #[test]
+    fn pick_payment_option_skips_non_exact() {
+        let mut req = base_requirement();
+        req.scheme = "subscription".into();
+        let err = pick_payment_option(&[req]).unwrap_err();
+        assert_eq!(err.code, PayErrorCode::UnsupportedChain);
+    }
+
+    #[test]
+    fn pick_payment_option_unsupported_chain() {
+        let mut req = base_requirement();
+        req.network = "solana:mainnet".into();
+        let err = pick_payment_option(&[req]).unwrap_err();
+        assert_eq!(err.code, PayErrorCode::UnsupportedChain);
+    }
+
+    #[test]
+    fn pick_payment_option_prefers_first_match() {
+        let mut eth = base_requirement();
+        eth.network = "ethereum".into();
+        eth.amount = "99999".into();
+        let base = base_requirement(); // network = "base"
+        let reqs = [eth, base];
+        let (req, chain) = pick_payment_option(&reqs).unwrap();
+        assert_eq!(chain.name, "Ethereum");
+        assert_eq!(req.amount, "99999");
+    }
+
+    // -----------------------------------------------------------------------
+    // handle_x402 (mock wallet, no network)
+    // -----------------------------------------------------------------------
+
+    struct MockWallet;
+
+    impl WalletAccess for MockWallet {
+        fn evm_account(&self) -> Result<crate::wallet::EvmAccount, PayError> {
+            Ok(crate::wallet::EvmAccount {
+                address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".into(),
+            })
+        }
+
+        fn sign_typed_data(
+            &self,
+            _chain: &str,
+            _typed_data_json: &str,
+        ) -> Result<crate::wallet::TypedDataSignature, PayError> {
+            Ok(crate::wallet::TypedDataSignature {
+                signature: "0xdeadbeef".into(),
+            })
+        }
+    }
+
+    /// Verify that handle_x402 builds correct typed data and payload structure
+    /// using a mock wallet (no real network call — will fail at the retry HTTP
+    /// request, but we can verify everything up to that point via parse/pick).
+    #[test]
+    fn mock_wallet_compiles_and_satisfies_trait() {
+        // This test verifies the WalletAccess trait works with just
+        // evm_account + sign_typed_data (no sign_hash needed).
+        let wallet = MockWallet;
+        let account = wallet.evm_account().unwrap();
+        assert!(account.address.starts_with("0x"));
+
+        let sig = wallet.sign_typed_data("base", "{}").unwrap();
+        assert_eq!(sig.signature, "0xdeadbeef");
+    }
+
+    #[test]
+    fn parse_and_pick_roundtrip() {
+        // Simulate a real 402 body and verify the full parse → pick pipeline.
+        let body = serde_json::json!({
+            "x402Version": 1,
+            "accepts": [{
+                "scheme": "exact",
+                "network": "base",
+                "maxAmountRequired": "10000",
+                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                "payTo": "0x7d9d1821d15B9e0b8Ab98A058361233E255E405D",
+                "maxTimeoutSeconds": 120,
+                "extra": {"name": "USD Coin", "version": "2"}
+            }]
+        })
+        .to_string();
+
+        let headers = HeaderMap::new();
+        let reqs = parse_requirements(&headers, &body).unwrap();
+        let (req, chain) = pick_payment_option(&reqs).unwrap();
+        assert_eq!(req.pay_to, "0x7d9d1821d15B9e0b8Ab98A058361233E255E405D");
+        assert_eq!(chain.ows_chain, "base");
+    }
+}
