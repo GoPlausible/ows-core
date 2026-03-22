@@ -9,34 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  bump-version:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: main
-          token: ${{ secrets.PRIVATE_REPOS_WRITE_PR }}
-
-      - name: Bump version in source files
-        run: |
-          V="${GITHUB_REF_NAME#v}"
-          "$GITHUB_WORKSPACE/scripts/set-version.sh" "$V" --all
-
-      - name: Generate READMEs
-        run: ./readme/generate.sh
-
-      - name: Commit version bump to main
-        run: |
-          V="${GITHUB_REF_NAME#v}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --staged --quiet && echo "No version changes needed" && exit 0
-          git commit -m "chore: bump version to $V"
-          git push origin main
-
   build:
-    needs: bump-version
     strategy:
       matrix:
         include:
@@ -97,7 +70,6 @@ jobs:
           path: ows/${{ matrix.asset }}
 
   python-wheels:
-    needs: bump-version
     strategy:
       matrix:
         include:
@@ -164,7 +136,6 @@ jobs:
           verify-metadata: false
 
   node-addons:
-    needs: bump-version
     strategy:
       matrix:
         include:
@@ -313,7 +284,6 @@ jobs:
         run: npm publish --access public --ignore-scripts
 
   publish-crates:
-    needs: bump-version
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -350,7 +320,6 @@ jobs:
         run: cargo publish -p ows-cli --allow-dirty
 
   sbom:
-    needs: bump-version
     uses: ./.github/workflows/sbom.yml
 
   release:
