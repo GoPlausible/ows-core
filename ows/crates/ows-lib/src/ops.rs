@@ -542,7 +542,7 @@ pub fn sign_encode_and_broadcast(
 // --- internal helpers ---
 
 /// Decrypt a wallet and return the private key for the given chain.
-pub fn decrypt_signing_key(
+fn decrypt_signing_key(
     wallet_name_or_id: &str,
     chain_type: ChainType,
     passphrase: &str,

@@ -3,7 +3,7 @@ name = "ows-pay"
 version = "0.3.9"
 edition = "2021"
 license = "MIT"
-description = "Payment client for the Open Wallet Standard (x402 + MPP)"
+description = "Payment client for the Open Wallet Standard (x402)"
 repository = "https://github.com/open-wallet-standard/core"
 
 [dependencies]
@@ -24,12 +24,3 @@ thiserror = "2"
 
 # Random nonce generation
 getrandom = "0.2"
-
-# Async trait (needed for alloy::signers::Signer impl)
-async-trait = "0.1"
-
-# Alloy types for implementing the Signer trait (MPP payment signing)
-alloy = { version = "1.7", features = ["signer-local"], default-features = false }
-
-# MPP protocol support
-mpp = { git = "https://github.com/tempoxyz/mpp-rs", features = ["client", "tempo", "middleware"] }

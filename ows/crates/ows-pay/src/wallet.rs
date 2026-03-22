@@ -30,9 +30,4 @@ pub trait WalletAccess: Send + Sync {
         chain: &str,
         typed_data_json: &str,
     ) -> Result<TypedDataSignature, PayError>;
-
-    /// Sign a raw 32-byte hash with the EVM key (secp256k1).
-    /// Returns 65 bytes: r (32) || s (32) || v (1).
-    /// Used by MPP (Tempo transaction signing via alloy's Signer trait).
-    fn sign_hash(&self, hash: &[u8]) -> Result<Vec<u8>, PayError>;
 }

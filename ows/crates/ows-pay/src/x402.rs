@@ -119,7 +119,7 @@ pub(crate) async fn handle_x402(
     let amount_display = crate::discovery::format_usdc(&req.amount);
 
     let client = reqwest::Client::new();
-    let retry = build_request(&client, url, method, req_body, Some(&payload_b64))
+    let retry = build_request(&client, url, method, req_body, Some(&payload_b64))?
         .send()
         .await?;
 
@@ -198,12 +198,19 @@ pub(crate) fn build_request(
     method: &str,
     body: Option<&str>,
     payment_header: Option<&str>,
-) -> reqwest::RequestBuilder {
+) -> Result<reqwest::RequestBuilder, PayError> {
     let mut req = match method.to_uppercase().as_str() {
+        "GET" => client.get(url),
         "POST" => client.post(url),
         "PUT" => client.put(url),
         "DELETE" => client.delete(url),
-        _ => client.get(url),
+        "PATCH" => client.patch(url),
+        other => {
+            return Err(PayError::new(
+                PayErrorCode::InvalidInput,
+                format!("unsupported HTTP method: {other}"),
+            ))
+        }
     };
 
     if let Some(b) = body {
@@ -216,5 +223,5 @@ pub(crate) fn build_request(
         req = req.header(HEADER_PAYMENT, payment);
     }
 
-    req
+    Ok(req)
 }

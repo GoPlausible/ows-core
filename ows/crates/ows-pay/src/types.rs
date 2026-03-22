@@ -8,14 +8,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Protocol {
     X402,
-    Mpp,
 }
 
 impl std::fmt::Display for Protocol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Protocol::X402 => write!(f, "x402"),
-            Protocol::Mpp => write!(f, "MPP"),
         }
     }
 }
@@ -164,52 +162,6 @@ pub struct Pagination {
     pub limit: u64,
     pub offset: u64,
     pub total: u64,
-}
-
-// ===========================================================================
-// MPP discovery wire types
-// ===========================================================================
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MppServicesResponse {
-    pub version: u32,
-    pub services: Vec<MppService>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MppService {
-    pub id: String,
-    pub name: String,
-    #[serde(alias = "url")]
-    pub service_url: String,
-    pub description: String,
-    #[serde(default)]
-    pub categories: Vec<String>,
-    #[serde(default)]
-    pub tags: Vec<String>,
-    #[serde(default)]
-    pub endpoints: Vec<MppEndpoint>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MppEndpoint {
-    pub method: String,
-    pub path: String,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub payment: Option<MppPayment>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MppPayment {
-    #[serde(default)]
-    pub amount: Option<String>,
-    #[serde(default)]
-    pub decimals: Option<u8>,
-    #[serde(default)]
-    pub description: Option<String>,
 }
 
 // ===========================================================================

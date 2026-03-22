@@ -19,6 +19,8 @@ pub enum PayErrorCode {
     UnsupportedChain,
     /// Discovery API error.
     DiscoveryFailed,
+    /// Invalid input (e.g. unsupported HTTP method).
+    InvalidInput,
 }
 
 #[derive(Debug, Error)]
