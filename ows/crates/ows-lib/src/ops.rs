@@ -1637,8 +1637,7 @@ mod tests {
         create_wallet("char-none-none", None, None, Some(vault)).unwrap();
 
         let tx = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
-        let sig =
-            sign_transaction("char-none-none", "evm", tx, None, None, Some(vault)).unwrap();
+        let sig = sign_transaction("char-none-none", "evm", tx, None, None, Some(vault)).unwrap();
         assert!(!sig.signature.is_empty());
         assert!(sig.recovery_id.is_some());
     }
@@ -1650,8 +1649,15 @@ mod tests {
         create_wallet("char-none-msg", None, None, Some(vault)).unwrap();
 
         let sig = sign_message(
-            "char-none-msg", "evm", "hello", None, None, None, Some(vault),
-        ).unwrap();
+            "char-none-msg",
+            "evm",
+            "hello",
+            None,
+            None,
+            None,
+            Some(vault),
+        )
+        .unwrap();
         assert!(!sig.signature.is_empty());
     }
 
@@ -1678,8 +1684,7 @@ mod tests {
         let tx = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
 
         // All four combinations of None/Some("") must produce the same signature
-        let sig_none =
-            sign_transaction("char-equiv", "evm", tx, None, None, Some(vault)).unwrap();
+        let sig_none = sign_transaction("char-equiv", "evm", tx, None, None, Some(vault)).unwrap();
         let sig_empty =
             sign_transaction("char-equiv", "evm", tx, Some(""), None, Some(vault)).unwrap();
 
@@ -1689,12 +1694,18 @@ mod tests {
         );
 
         // Same for sign_message
-        let msg_none = sign_message(
-            "char-equiv", "evm", "test", None, None, None, Some(vault),
-        ).unwrap();
+        let msg_none =
+            sign_message("char-equiv", "evm", "test", None, None, None, Some(vault)).unwrap();
         let msg_empty = sign_message(
-            "char-equiv", "evm", "test", Some(""), None, None, Some(vault),
-        ).unwrap();
+            "char-equiv",
+            "evm",
+            "test",
+            Some(""),
+            None,
+            None,
+            Some(vault),
+        )
+        .unwrap();
 
         assert_eq!(
             msg_none.signature, msg_empty.signature,
@@ -1718,8 +1729,7 @@ mod tests {
         create_wallet("char-some-none", None, Some(""), Some(vault)).unwrap();
 
         let tx = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
-        let sig =
-            sign_transaction("char-some-none", "evm", tx, None, None, Some(vault)).unwrap();
+        let sig = sign_transaction("char-some-none", "evm", tx, None, None, Some(vault)).unwrap();
         assert!(!sig.signature.is_empty());
     }
 
@@ -1733,10 +1743,18 @@ mod tests {
         create_wallet("char-no-pass-reject", None, None, Some(vault)).unwrap();
 
         let result = sign_message(
-            "char-no-pass-reject", "evm", "test",
-            Some("some-random-passphrase"), None, None, Some(vault),
+            "char-no-pass-reject",
+            "evm",
+            "test",
+            Some("some-random-passphrase"),
+            None,
+            None,
+            Some(vault),
         );
-        assert!(result.is_err(), "non-empty passphrase on empty-passphrase wallet should fail");
+        assert!(
+            result.is_err(),
+            "non-empty passphrase on empty-passphrase wallet should fail"
+        );
         match result.unwrap_err() {
             OwsLibError::Crypto(_) => {} // Expected: decryption failure
             other => panic!("expected Crypto error, got: {other}"),
@@ -1750,8 +1768,14 @@ mod tests {
         create_wallet("char-wrong-pass", None, Some("correct"), Some(vault)).unwrap();
 
         let tx = "deadbeef";
-        let result =
-            sign_transaction("char-wrong-pass", "evm", tx, Some("wrong"), None, Some(vault));
+        let result = sign_transaction(
+            "char-wrong-pass",
+            "evm",
+            tx,
+            Some("wrong"),
+            None,
+            Some(vault),
+        );
         assert!(result.is_err());
         match result.unwrap_err() {
             OwsLibError::Crypto(_) => {} // Expected
@@ -1816,8 +1840,7 @@ mod tests {
         create_wallet("orig-name", None, None, Some(vault)).unwrap();
 
         // Sign with original name
-        let sig1 =
-            sign_message("orig-name", "evm", "test", None, None, None, Some(vault)).unwrap();
+        let sig1 = sign_message("orig-name", "evm", "test", None, None, None, Some(vault)).unwrap();
         assert!(!sig1.signature.is_empty());
 
         // Rename
@@ -1827,8 +1850,7 @@ mod tests {
         assert!(sign_message("orig-name", "evm", "test", None, None, None, Some(vault)).is_err());
 
         // Sign with new name — should produce same signature (same key)
-        let sig2 =
-            sign_message("new-name", "evm", "test", None, None, None, Some(vault)).unwrap();
+        let sig2 = sign_message("new-name", "evm", "test", None, None, None, Some(vault)).unwrap();
         assert_eq!(
             sig1.signature, sig2.signature,
             "renamed wallet should produce identical signatures"
@@ -1920,8 +1942,7 @@ mod tests {
         )
         .unwrap();
 
-        let sig =
-            sign_transaction("char-pk", "evm", "deadbeef", None, None, Some(vault)).unwrap();
+        let sig = sign_transaction("char-pk", "evm", "deadbeef", None, None, Some(vault)).unwrap();
         assert!(!sig.signature.is_empty());
         assert!(sig.recovery_id.is_some());
     }
@@ -1958,10 +1979,7 @@ mod tests {
                 result.err()
             );
             let sig = result.unwrap();
-            assert!(
-                !sig.signature.is_empty(),
-                "signature empty for {chain}"
-            );
+            assert!(!sig.signature.is_empty(), "signature empty for {chain}");
             if *has_recovery_id {
                 assert!(
                     sig.recovery_id.is_some(),
@@ -2000,10 +2018,7 @@ mod tests {
 
         // v should be 27 or 28 per EIP-712 convention
         let v = sig_bytes[64];
-        assert!(
-            v == 27 || v == 28,
-            "EIP-712 v should be 27 or 28, got {v}"
-        );
+        assert!(v == 27 || v == 28, "EIP-712 v should be 27 or 28, got {v}");
     }
 
     // ================================================================
@@ -2020,10 +2035,8 @@ mod tests {
 
         let tx = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
 
-        let sig0 =
-            sign_transaction("char-idx", "evm", tx, None, Some(0), Some(vault)).unwrap();
-        let sig1 =
-            sign_transaction("char-idx", "evm", tx, None, Some(1), Some(vault)).unwrap();
+        let sig0 = sign_transaction("char-idx", "evm", tx, None, Some(0), Some(vault)).unwrap();
+        let sig1 = sign_transaction("char-idx", "evm", tx, None, Some(1), Some(vault)).unwrap();
 
         assert_ne!(
             sig0.signature, sig1.signature,
@@ -2031,8 +2044,7 @@ mod tests {
         );
 
         // Index 0 should match the default (None)
-        let sig_default =
-            sign_transaction("char-idx", "evm", tx, None, None, Some(vault)).unwrap();
+        let sig_default = sign_transaction("char-idx", "evm", tx, None, None, Some(vault)).unwrap();
         assert_eq!(
             sig0.signature, sig_default.signature,
             "index=0 should match index=None (default)"
@@ -2046,11 +2058,25 @@ mod tests {
         create_wallet("char-idx-msg", None, None, Some(vault)).unwrap();
 
         let sig0 = sign_message(
-            "char-idx-msg", "evm", "hello", None, None, Some(0), Some(vault),
-        ).unwrap();
+            "char-idx-msg",
+            "evm",
+            "hello",
+            None,
+            None,
+            Some(0),
+            Some(vault),
+        )
+        .unwrap();
         let sig1 = sign_message(
-            "char-idx-msg", "evm", "hello", None, None, Some(1), Some(vault),
-        ).unwrap();
+            "char-idx-msg",
+            "evm",
+            "hello",
+            None,
+            None,
+            Some(1),
+            Some(vault),
+        )
+        .unwrap();
 
         assert_ne!(
             sig0.signature, sig1.signature,
@@ -2099,8 +2125,7 @@ mod tests {
 
         // Sign transaction
         let tx = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
-        let sig =
-            sign_transaction("char-24w", "evm", tx, None, None, Some(vault)).unwrap();
+        let sig = sign_transaction("char-24w", "evm", tx, None, None, Some(vault)).unwrap();
         assert!(!sig.signature.is_empty());
 
         // Sign message on multiple chains
@@ -2116,8 +2141,7 @@ mod tests {
         // Re-import into separate vault → deterministic
         let v2 = tempfile::tempdir().unwrap();
         import_wallet_mnemonic("char-24w-2", &phrase, None, None, Some(v2.path())).unwrap();
-        let sig2 =
-            sign_transaction("char-24w-2", "evm", tx, None, None, Some(v2.path())).unwrap();
+        let sig2 = sign_transaction("char-24w-2", "evm", tx, None, None, Some(v2.path())).unwrap();
         assert_eq!(
             sig.signature, sig2.signature,
             "reimported 24-word wallet must produce identical signature"
@@ -2198,7 +2222,8 @@ mod tests {
             .clone();
 
         let tx_hex = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
-        let sig = sign_transaction("char-tx-recover", "evm", tx_hex, None, None, Some(vault)).unwrap();
+        let sig =
+            sign_transaction("char-tx-recover", "evm", tx_hex, None, None, Some(vault)).unwrap();
 
         let sig_bytes = hex::decode(&sig.signature).unwrap();
         assert_eq!(sig_bytes.len(), 65);
@@ -2246,7 +2271,8 @@ mod tests {
         // For Solana, sign_transaction signs the raw bytes (callers must pre-extract).
         // But sign_and_send does: extract_signable → sign → encode → broadcast.
         // Verify the raw sign_transaction path works:
-        let sig = sign_transaction("char-sol-sig", "solana", &tx_hex, None, None, Some(vault)).unwrap();
+        let sig =
+            sign_transaction("char-sol-sig", "solana", &tx_hex, None, None, Some(vault)).unwrap();
         assert_eq!(
             hex::decode(&sig.signature).unwrap().len(),
             64,
@@ -2256,7 +2282,8 @@ mod tests {
 
         // Now verify the sign_encode_and_broadcast pipeline (minus actual broadcast)
         // by manually calling the signer's extract/sign/encode chain:
-        let key = decrypt_signing_key("char-sol-sig", ChainType::Solana, "", None, Some(vault)).unwrap();
+        let key =
+            decrypt_signing_key("char-sol-sig", ChainType::Solana, "", None, Some(vault)).unwrap();
         let signer = signer_for_chain(ChainType::Solana);
 
         let signable = signer.extract_signable_bytes(&tx_bytes).unwrap();
@@ -2266,7 +2293,9 @@ mod tests {
         );
 
         let output = signer.sign_transaction(key.expose(), signable).unwrap();
-        let signed_tx = signer.encode_signed_transaction(&tx_bytes, &output).unwrap();
+        let signed_tx = signer
+            .encode_signed_transaction(&tx_bytes, &output)
+            .unwrap();
 
         // The signature should be at bytes 1..65 in the signed tx
         assert_eq!(&signed_tx[1..65], &output.signature[..]);
@@ -2276,13 +2305,9 @@ mod tests {
         assert_eq!(signed_tx.len(), tx_bytes.len());
 
         // Verify the signature is valid
-        let signing_key = ed25519_dalek::SigningKey::from_bytes(
-            &key.expose().try_into().unwrap(),
-        );
+        let signing_key = ed25519_dalek::SigningKey::from_bytes(&key.expose().try_into().unwrap());
         let verifying_key = signing_key.verifying_key();
-        let ed_sig = ed25519_dalek::Signature::from_bytes(
-            &output.signature.try_into().unwrap(),
-        );
+        let ed_sig = ed25519_dalek::Signature::from_bytes(&output.signature.try_into().unwrap());
         verifying_key
             .verify_strict(message_payload, &ed_sig)
             .expect("Solana signature should verify against extracted message");
@@ -2336,7 +2361,10 @@ mod tests {
 
         // Full signed tx is RLP-encoded with type byte prefix
         assert!(full_signed_tx.len() > 65);
-        assert_eq!(full_signed_tx[0], 0x02, "should preserve EIP-1559 type byte");
+        assert_eq!(
+            full_signed_tx[0], 0x02,
+            "should preserve EIP-1559 type byte"
+        );
 
         // They must be completely different
         assert_ne!(raw_sig_bytes, full_signed_tx);
@@ -2344,7 +2372,7 @@ mod tests {
         // The full signed tx should contain the r and s values from the signature
         // somewhere in its RLP encoding (not at the same offsets)
         let r_bytes = &raw_sig_bytes[..32];
-        let s_bytes = &raw_sig_bytes[32..64];
+        let _s_bytes = &raw_sig_bytes[32..64];
 
         // Verify r bytes appear in the full signed tx (they'll be RLP-encoded)
         let full_hex = hex::encode(&full_signed_tx);

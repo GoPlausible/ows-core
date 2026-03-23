@@ -346,7 +346,7 @@ mod tests {
         if result.is_ok() {
             // If it doesn't error, verify no file was written outside the vault
             let wallets_dir_path = vault.join("wallets");
-            let escaped_path = vault.join("wallets").join("../../../etc/passwd.json");
+            let _escaped_path = vault.join("wallets").join("../../../etc/passwd.json");
             let canonical_wallets = wallets_dir_path.canonicalize().unwrap();
 
             // List what's actually in the wallets dir

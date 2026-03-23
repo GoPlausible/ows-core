@@ -126,6 +126,7 @@ pub fn log_broadcast(wallet_id: &str, chain_id: &str, tx_hash: &str) {
 
 /// Append an audit entry to the audit log at a specific vault path.
 /// Like `log_audit` but allows specifying the vault directory (for testing).
+#[cfg(test)]
 pub fn log_audit_at(entry: &AuditEntry, vault_path: &std::path::Path) {
     let log_dir = vault_path.join("logs");
     let log_path = log_dir.join("audit.jsonl");
@@ -235,7 +236,10 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(contents.trim()).unwrap();
         assert_eq!(parsed["operation"], "broadcast_transaction");
         assert_eq!(parsed["chain_id"], "eip155:8453");
-        assert!(parsed["details"].as_str().unwrap().contains("tx_hash=0xabc123"));
+        assert!(parsed["details"]
+            .as_str()
+            .unwrap()
+            .contains("tx_hash=0xabc123"));
     }
 
     #[test]

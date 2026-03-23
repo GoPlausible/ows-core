@@ -307,27 +307,15 @@ mod tests {
     #[test]
     fn test_different_index_different_key_evm() {
         let mnemonic = Mnemonic::from_phrase(ABANDON_PHRASE).unwrap();
-        let key0 = HdDeriver::derive_from_mnemonic(
-            &mnemonic,
-            "",
-            "m/44'/60'/0'/0/0",
-            Curve::Secp256k1,
-        )
-        .unwrap();
-        let key1 = HdDeriver::derive_from_mnemonic(
-            &mnemonic,
-            "",
-            "m/44'/60'/0'/0/1",
-            Curve::Secp256k1,
-        )
-        .unwrap();
-        let key2 = HdDeriver::derive_from_mnemonic(
-            &mnemonic,
-            "",
-            "m/44'/60'/0'/0/2",
-            Curve::Secp256k1,
-        )
-        .unwrap();
+        let key0 =
+            HdDeriver::derive_from_mnemonic(&mnemonic, "", "m/44'/60'/0'/0/0", Curve::Secp256k1)
+                .unwrap();
+        let key1 =
+            HdDeriver::derive_from_mnemonic(&mnemonic, "", "m/44'/60'/0'/0/1", Curve::Secp256k1)
+                .unwrap();
+        let key2 =
+            HdDeriver::derive_from_mnemonic(&mnemonic, "", "m/44'/60'/0'/0/2", Curve::Secp256k1)
+                .unwrap();
 
         assert_ne!(key0.expose(), key1.expose());
         assert_ne!(key1.expose(), key2.expose());
@@ -337,20 +325,12 @@ mod tests {
     #[test]
     fn test_different_index_different_key_ed25519() {
         let mnemonic = Mnemonic::from_phrase(ABANDON_PHRASE).unwrap();
-        let key0 = HdDeriver::derive_from_mnemonic(
-            &mnemonic,
-            "",
-            "m/44'/501'/0'/0'",
-            Curve::Ed25519,
-        )
-        .unwrap();
-        let key1 = HdDeriver::derive_from_mnemonic(
-            &mnemonic,
-            "",
-            "m/44'/501'/1'/0'",
-            Curve::Ed25519,
-        )
-        .unwrap();
+        let key0 =
+            HdDeriver::derive_from_mnemonic(&mnemonic, "", "m/44'/501'/0'/0'", Curve::Ed25519)
+                .unwrap();
+        let key1 =
+            HdDeriver::derive_from_mnemonic(&mnemonic, "", "m/44'/501'/1'/0'", Curve::Ed25519)
+                .unwrap();
 
         assert_ne!(key0.expose(), key1.expose());
     }
@@ -371,22 +351,14 @@ mod tests {
     fn test_key_length_32_bytes_all_curves() {
         let mnemonic = Mnemonic::from_phrase(ABANDON_PHRASE).unwrap();
 
-        let secp_key = HdDeriver::derive_from_mnemonic(
-            &mnemonic,
-            "",
-            "m/44'/60'/0'/0/0",
-            Curve::Secp256k1,
-        )
-        .unwrap();
+        let secp_key =
+            HdDeriver::derive_from_mnemonic(&mnemonic, "", "m/44'/60'/0'/0/0", Curve::Secp256k1)
+                .unwrap();
         assert_eq!(secp_key.len(), 32);
 
-        let ed_key = HdDeriver::derive_from_mnemonic(
-            &mnemonic,
-            "",
-            "m/44'/501'/0'/0'",
-            Curve::Ed25519,
-        )
-        .unwrap();
+        let ed_key =
+            HdDeriver::derive_from_mnemonic(&mnemonic, "", "m/44'/501'/0'/0'", Curve::Ed25519)
+                .unwrap();
         assert_eq!(ed_key.len(), 32);
     }
 
