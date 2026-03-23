@@ -21,8 +21,10 @@
 | `sign_and_send(...)` | Done | |
 | Node.js NAPI bindings | Done | `bindings/node/src/lib.rs` |
 | Python PyO3 bindings | Done | `bindings/python/src/lib.rs` |
-| API key scoping (agent sees only permitted wallets) | Not started | No API key system |
-| Policy evaluation on agent requests | Not started | No policy engine |
+| Token-based signing (credential = passphrase or `ows_key_...` token) | Not started | |
+| Policy evaluation on agent requests | Not started | |
+| API key management (`create_api_key`, `list_api_keys`, `revoke_api_key`) | Not started | |
+| Policy management (`create_policy`, `list_policies`, `delete_policy`) | Not started | |
 | MCP server | Not started | |
 | Audit logging from bindings (not just CLI) | Not started | Only CLI logs to audit |
 
@@ -102,30 +104,57 @@ Both bindings expose the same 13 functions:
 | `sign_message(wallet, chain, message, passphrase, encoding?, index?, vault_path?)` | Sign a message |
 | `sign_and_send(wallet, chain, tx_hex, passphrase, index?, rpc_url?, vault_path?)` | Sign and broadcast a transaction |
 
-All functions operate on the default vault (`~/.ows/`) unless a custom `vault_path` is provided. The passphrase is used to decrypt wallet key material for signing operations.
+All functions operate on the default vault (`~/.ows/`) unless a custom `vault_path` is provided.
+
+### Credential parameter
+
+The `passphrase` parameter in signing functions accepts either a wallet passphrase **or** an API token:
+
+- **Passphrase** (e.g., `"my-secret"`) → owner mode. Decrypts wallet directly via scrypt. No policy evaluation.
+- **API token** (e.g., `"ows_key_a1b2c3d4..."`) → agent mode. Looks up API key file, evaluates attached policies, decrypts via HKDF. Returns `PolicyDenied` error if policies block the request.
+
+This means existing signing function signatures are unchanged — agents just pass a token where the passphrase goes.
 
 > **Note:** Because the bindings run in-process, key material is decrypted within the application's address space. For use cases where key isolation is critical, consider running OWS in a separate subprocess.
 
+### New management functions
+
+Both bindings expose additional functions for policy and API key management:
+
+| Function | Description |
+|---|---|
+| `create_policy(json_str, vault_path?)` | Register a policy from a JSON string |
+| `list_policies(vault_path?)` | List all registered policies |
+| `delete_policy(id, vault_path?)` | Delete a policy |
+| `create_api_key(name, wallet, passphrase, policies, vault_path?)` | Create an API key. Returns `{ id, token }`. Token shown once. |
+| `list_api_keys(vault_path?)` | List API keys (metadata only, no tokens) |
+| `revoke_api_key(id, vault_path?)` | Delete an API key file |
+
 ## Agent Interaction Example
 
-Here's how an AI agent interacts with OWS through the bindings using an API key. The API key scopes the agent to specific wallets and policies.
+Here's how an AI agent interacts with OWS through the bindings using an API token.
 
 ```
+Setup (owner, one-time):
+  ows key create --name "claude-agent" --wallet agent-treasury --policy spending-limit
+  → Token: ows_key_a1b2c3d4e5f6...  (provisioned to agent)
+
 Agent: "I need to send 0.01 ETH to 0x4B08... on Base"
 
-1. Agent calls list_wallets to find available wallets
-   → Returns only wallets in the API key's scope
-   → [{ id: "3198bc9c-...", name: "agent-treasury", ... }]
-
-2. Agent calls sign_and_send to execute
-   → API key verified: wallet is in key's scope
-   → Policy engine evaluates the API key's attached policies
-   → Signing enclave decrypts key, signs, wipes
-   → Transaction broadcast to Base RPC
+1. Agent calls sign_and_send("agent-treasury", "base", "<tx-hex>", "ows_key_a1b2c3d4...")
+   → OWS detects ows_key_ prefix → agent mode
+   → SHA256(token) → looks up API key file
+   → Verifies "agent-treasury" is in key's wallet_ids
+   → Loads policies: ["spending-limit"]
+   → Evaluates: spending limit check passes (0.01 ETH < 1.0 ETH daily)
+   → HKDF(token) → decrypts mnemonic from key file
+   → Signs transaction, wipes key material
+   → Broadcasts to Base RPC
+   → Records spend in policy state
    → Returns: { tx_hash: "0xabc..." }
 ```
 
-At no point does the agent see the private key. The API key determines which wallets the agent can access, and the policies attached to the key constrain what operations are permitted.
+At no point does the agent see the private key. The API token determines which wallets the agent can access, and the policies attached to the token constrain what operations are permitted.
 
 ## References
 

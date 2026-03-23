@@ -13,9 +13,10 @@
 | Audit log (`~/.ows/logs/audit.jsonl`) | Done | `ows-cli/src/audit.rs` |
 | Crypto object (AES-256-GCM + scrypt) | Done | `ows-signer/src/crypto.rs` |
 | Keystore v3 import | Not started | No v3 import/re-wrap logic |
-| `~/.ows/keys/` directory + API key files | Not started | No API key system |
-| `~/.ows/policies/` directory + policy files | Not started | No policy system |
-| `~/.ows/plugins/` directory | Not started | Plugins are hardcoded |
+| `~/.ows/keys/` directory + API key files | Not started | Approach B: wallet secrets re-encrypted under HKDF(token) |
+| `~/.ows/policies/` directory + policy files | Not started | |
+| `~/.ows/policy_state/` directory | Not started | Spending state for daily limits |
+| HKDF-SHA256 crypto envelope support | Not started | For API key token-derived encryption |
 | Passphrase 12-char minimum enforcement | Not started | No validation at creation time |
 
 ## Design Decision
@@ -44,15 +45,15 @@ The Ethereum Keystore v3 format has been battle-tested since 2015, is implemente
 │   ├── <wallet-id>.json           # Encrypted wallet file (one per wallet)
 │   └── ...
 ├── keys/
-│   ├── <key-id>.json              # API key definition (one per key)
+│   ├── <key-id>.json              # API key + encrypted wallet secrets (one per key)
 │   └── ...
 ├── policies/
-│   ├── <policy-id>.json           # Policy definition
+│   ├── <policy-id>.json           # Policy definition (declarative rules and/or executable)
 │   └── ...
-├── plugins/
-│   ├── <chain-type>/              # Chain-specific plugins
-│   │   ├── signer.js              # Signing implementation
-│   │   └── builder.js             # Transaction builder
+├── policy_state/
+│   ├── <key-id>/
+│   │   ├── spending-<chain-id>-<date>.json  # Daily spending state
+│   │   └── ...
 │   └── ...
 └── logs/
     └── audit.jsonl                # Append-only audit log
@@ -61,17 +62,23 @@ The Ethereum Keystore v3 format has been battle-tested since 2015, is implemente
 ### Filesystem Permissions
 
 ```
-~/.ows/                  drwx------  (700)
-~/.ows/wallets/          drwx------  (700)
-~/.ows/wallets/*.json    -rw-------  (600)
-~/.ows/keys/             drwx------  (700)
-~/.ows/keys/*.json       -rw-------  (600)
-~/.ows/policies/         drwxr-xr-x  (755)
-~/.ows/config.json       -rw-------  (600)
-~/.ows/logs/audit.jsonl  -rw-------  (600)
+~/.ows/                       drwx------  (700)
+~/.ows/wallets/               drwx------  (700)
+~/.ows/wallets/*.json         -rw-------  (600)
+~/.ows/keys/                  drwx------  (700)
+~/.ows/keys/*.json            -rw-------  (600)
+~/.ows/policies/              drwxr-xr-x  (755)
+~/.ows/policies/*.json        -rw-r--r--  (644)
+~/.ows/policy_state/          drwx------  (700)
+~/.ows/config.json            -rw-------  (600)
+~/.ows/logs/audit.jsonl       -rw-------  (600)
 ```
 
-The `wallets/` directory and its contents MUST be readable only by the owner. Implementations MUST verify permissions on startup and refuse to operate if the vault directory is world-readable or group-readable.
+The `wallets/` and `keys/` directories contain encrypted secrets and MUST be readable only by the owner. Implementations MUST verify permissions on startup and refuse to operate if these directories are world-readable or group-readable.
+
+The `policies/` directory uses relaxed permissions (755/644) because policy files are not secret — they contain rule definitions and paths to executables, not key material.
+
+The `policy_state/` directory tracks spending and MUST be owner-only (700) to prevent manipulation of spending limits.
 
 ## Wallet File Format
 
@@ -127,17 +134,27 @@ Each wallet is stored as a single JSON file extending the Ethereum Keystore v3 s
 
 ## API Key File Format
 
-Each API key is stored as a JSON file in `~/.ows/keys/`:
+Each API key is stored as a JSON file in `~/.ows/keys/`. The key file contains metadata, policy attachments, and **encrypted copies of wallet secrets** re-encrypted under the API token (see [03-policy-engine.md](03-policy-engine.md) for the full cryptographic design).
 
 ```json
 {
   "id": "7a2f1b3c-4d5e-6f7a-8b9c-0d1e2f3a4b5c",
   "name": "claude-agent",
   "token_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "created_at": "2026-02-27T10:30:00Z",
+  "created_at": "2026-03-22T10:30:00Z",
   "wallet_ids": ["3198bc9c-6672-5ab3-d995-4942343ae5b6"],
-  "policy_ids": ["spending-limit-01", "safe-agent-policy"],
-  "expires_at": null
+  "policy_ids": ["spending-limit", "base-only"],
+  "expires_at": null,
+  "wallet_secrets": {
+    "3198bc9c-6672-5ab3-d995-4942343ae5b6": {
+      "cipher": "aes-256-gcm",
+      "cipherparams": { "iv": "a1b2c3d4e5f6a7b8c9d0e1f2" },
+      "ciphertext": "...",
+      "auth_tag": "...",
+      "kdf": "hkdf-sha256",
+      "kdfparams": { "dklen": 32, "salt": "...", "info": "ows-api-key-v1" }
+    }
+  }
 }
 ```
 
@@ -152,15 +169,18 @@ Each API key is stored as a JSON file in `~/.ows/keys/`:
 | `wallet_ids` | array | yes | Wallet IDs this key is authorized to access |
 | `policy_ids` | array | yes | Policy IDs evaluated on every request made with this key |
 | `expires_at` | string | no | ISO 8601 expiry timestamp. `null` means no expiry. |
+| `wallet_secrets` | object | yes | Map of wallet ID → CryptoEnvelope. Each entry is the wallet's mnemonic re-encrypted under HKDF(token). |
 
-The `keys/` directory and its contents use the same strict permissions as `wallets/` (`700` for the directory, `600` for files) because the `token_hash` must be protected against local reads.
+The `keys/` directory and its contents use the same strict permissions as `wallets/` (`700` for the directory, `600` for files) because `wallet_secrets` contains encrypted key material and `token_hash` must be protected against local reads.
+
+Revoking an API key means deleting the key file. The encrypted mnemonic copies are destroyed. The original wallet file and other API keys are unaffected.
 
 ### Crypto Object
 
 The `crypto` object follows Keystore v3 conventions with two upgrades:
 
 1. **AES-256-GCM** is the default cipher (upgraded from AES-128-CTR). GCM provides authenticated encryption, eliminating the need for a separate MAC field.
-2. **scrypt** remains the recommended KDF with the same parameter semantics. PBKDF2-SHA256 is an acceptable alternative for resource-constrained environments.
+2. **scrypt** remains the recommended KDF for wallet files (passphrase-derived). **HKDF-SHA256** is used for API key files (token-derived).
 
 | Field | Type | Description |
 |---|---|---|
@@ -168,8 +188,28 @@ The `crypto` object follows Keystore v3 conventions with two upgrades:
 | `cipherparams.iv` | string | Hex-encoded initialization vector |
 | `ciphertext` | string | Hex-encoded encrypted key material |
 | `auth_tag` | string | Hex-encoded GCM auth tag (only for `aes-256-gcm`) |
-| `kdf` | string | `scrypt` (recommended) or `pbkdf2` |
-| `kdfparams` | object | KDF-specific parameters |
+| `kdf` | string | `scrypt`, `hkdf-sha256`, or `pbkdf2` |
+| `kdfparams` | object | KDF-specific parameters (see below) |
+
+**scrypt kdfparams** (wallet files — passphrase input):
+
+| Field | Type | Description |
+|---|---|---|
+| `dklen` | integer | Derived key length in bytes (32) |
+| `n` | integer | CPU/memory cost parameter (must be power of 2, minimum 2^16) |
+| `r` | integer | Block size (8) |
+| `p` | integer | Parallelization (1) |
+| `salt` | string | Hex-encoded random salt (32 bytes) |
+
+**hkdf-sha256 kdfparams** (API key files — token input):
+
+| Field | Type | Description |
+|---|---|---|
+| `dklen` | integer | Derived key length in bytes (32) |
+| `salt` | string | Hex-encoded random salt (32 bytes) |
+| `info` | string | Context string (`"ows-api-key-v1"`) |
+
+HKDF is used for API tokens because they are 256-bit random values — scrypt's brute-force resistance is unnecessary for high-entropy inputs. HKDF derives the key in microseconds vs scrypt's ~500ms.
 
 For `aes-128-ctr` (backward compat), a `mac` field with `keccak-256(dk[16..31] ++ ciphertext)` is required, following the Keystore v3 spec.
 
@@ -206,9 +246,9 @@ All signing operations are appended to `~/.ows/logs/audit.jsonl`:
 }
 ```
 
-Supported operations: `create_wallet`, `import_wallet`, `export_wallet`, `broadcast_transaction`, `delete_wallet`, `rename_wallet`.
+Supported operations: `create_wallet`, `import_wallet`, `export_wallet`, `broadcast_transaction`, `delete_wallet`, `rename_wallet`, `policy_evaluated`, `policy_denied`, `policy_timeout`.
 
-All fields except `timestamp`, `wallet_id`, and `operation` are optional.
+All fields except `timestamp`, `wallet_id`, and `operation` are optional. Policy-related entries may include `api_key_id` and `policy_id` fields.
 
 The audit log is append-only. Implementations MUST NOT allow deletion or modification of existing entries. Log rotation is permitted (e.g., monthly archives).
 

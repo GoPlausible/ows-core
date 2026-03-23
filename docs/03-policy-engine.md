@@ -6,28 +6,32 @@
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Two-tier access model (owner vs agent) | Not started | |
+| Two-tier access model (owner vs agent) | Not started | Credential-based: passphrase = owner, token = agent |
 | API key creation (`ows key create`) | Not started | |
-| API key file format + storage (`~/.ows/keys/`) | Not started | |
+| API key file format + storage (`~/.ows/keys/`) | Not started | Approach B: mnemonic re-encrypted under HKDF(token) |
+| HKDF-SHA256 key derivation for API tokens | Not started | |
 | Policy file format + storage (`~/.ows/policies/`) | Not started | |
-| Policy executable protocol (JSON-RPC over stdin/stdout) | Not started | |
-| PolicyContext structure (piped to stdin) | Not started | |
-| PolicyResult structure (read from stdout) | Not started | |
+| Declarative policy rules (5 built-in types) | Not started | |
+| Custom executable policy protocol (stdin/stdout) | Not started | |
+| PolicyContext structure | Not started | |
+| PolicyResult structure | Not started | |
 | Policy attachment to API keys | Not started | |
 | Default-deny enforcement | Not started | |
-| 5-second timeout + kill on timeout | Not started | |
-| Failure semantics (deny on non-zero exit, bad JSON) | Not started | |
+| 5-second timeout + kill on timeout | Not started | Executable policies only |
+| Failure semantics (deny on non-zero exit, bad JSON) | Not started | Executable policies only |
 | Policy actions (`deny` / `warn`) | Not started | |
 | AND semantics (all policies must allow) | Not started | |
+| Spending state tracking (`~/.ows/policy_state/`) | Not started | For daily spending limits |
 | `ows policy create` CLI command | Not started | |
 | `ows key create` CLI command | Not started | |
 | Audit log integration for policy results | Not started | |
+| Bug fixes on critical path (path traversal, vault permissions, envelope validation) | Done | |
 
-**This entire spec is unimplemented.** The policy engine is the core security boundary for agent access and is the highest-priority gap.
+**This spec is unimplemented.** The policy engine is the core security boundary for agent access and is the highest-priority gap.
 
 ## Design Decision
 
-**OWS uses a two-tier access model: the wallet owner has unrestricted (sudo) access, while agents authenticate via API keys whose attached policies are evaluated before the signing enclave is invoked. Policies are attached to API keys, not wallets — wallets are dumb containers for key material. Default behavior is deny-by-default when a policy is attached to a key — only transactions that pass all of the key's policies are signed.**
+**The credential determines the access tier.** The wallet owner authenticates with a passphrase and has full, unrestricted access — no policies are evaluated. Agents authenticate with API tokens (`ows_key_...`) whose attached policies are evaluated before any key material is touched. Policies are attached to API keys, not wallets. Only transactions that pass all of a key's policies are signed.
 
 ### Why Pre-Signing Policy Enforcement
 
@@ -43,27 +47,194 @@ OWS uses pre-signing enforcement because:
 1. It works identically for all chains (no smart contract deployment needed)
 2. It prevents key material from being accessed for unauthorized transactions
 3. It complements on-chain enforcement (use both for defense in depth)
-4. Following Privy's model: policies are evaluated inside the signing enclave's trust boundary
 
-## Policy Executable Protocol
+## Access Model
 
-A policy is any executable program. OWS invokes the executable, pipes a `PolicyContext` JSON object to its stdin, and reads a `PolicyResult` JSON object from its stdout.
+```
+sign_transaction(wallet, chain, tx, credential)
+                                       │
+                          ┌────────────┴────────────┐
+                          │                          │
+                     passphrase                 ows_key_...
+                          │                          │
+                     owner mode                 agent mode
+                     no policy                  policies enforced
+                     scrypt decrypt             HKDF decrypt
+```
 
-This follows the Unix philosophy and mirrors the enclave protocol already used by OWS (JSON-RPC over stdio). Policies can be written in any language — shell scripts, Python, Go, Rust, JavaScript — whatever the operator prefers.
+| Caller | Authentication | Policy Evaluation |
+|---|---|---|
+| **Owner** | Passphrase | **None.** Full access to all wallets. |
+| **Agent** | `ows_key_...` token | **All policies attached to the API key** are evaluated. Every policy must allow (AND semantics). |
 
-Because a policy is arbitrary code, it can perform any logic before returning a verdict — including making RPC calls to simulate the transaction, querying on-chain state, checking balances, calling external APIs, or consulting a local database. OWS core does not provide these capabilities directly; they are delegated to the policy layer.
+The credential itself determines the access tier. No bypass flags. The owner uses the passphrase; agents use tokens. Different agents get different tokens with different policies.
 
-**Invocation:**
+If the owner wants policy-constrained access for themselves, they create an API key and use the token instead of the passphrase.
+
+## API Key Cryptography
+
+### The problem
+
+Agents need to sign autonomously — no human in the loop. The wallet's mnemonic is encrypted under the owner's passphrase. How does an agent decrypt it without the passphrase?
+
+### Token-as-capability
+
+When the owner creates an API key, OWS decrypts the wallet mnemonic using the owner's passphrase and **re-encrypts it under a key derived from the API token**. The encrypted copy is stored in the API key file. The agent presents the token with each signing request; the token serves as both authentication and decryption capability.
+
+### Key derivation (HKDF-SHA256)
+
+API tokens are 256-bit random values (`ows_key_<base62>`). Since they are already high-entropy, we use HKDF-SHA256 instead of scrypt:
+
+```
+token = ows_key_<random 256 bits, base62-encoded>
+salt  = random 32 bytes (stored in CryptoEnvelope)
+prk   = HKDF-Extract(salt, token)
+key   = HKDF-Expand(prk, "ows-api-key-v1", 32)  →  AES-256-GCM key
+```
+
+Scrypt exists to make brute-force expensive for low-entropy passphrases. API tokens have 256 bits of entropy — brute force is already infeasible. HKDF derives the key in microseconds vs scrypt's ~500ms, eliminating latency in the agent signing path.
+
+The `CryptoEnvelope` struct is reused with a new KDF identifier:
+
+```json
+{
+  "cipher": "aes-256-gcm",
+  "cipherparams": { "iv": "..." },
+  "ciphertext": "...",
+  "auth_tag": "...",
+  "kdf": "hkdf-sha256",
+  "kdfparams": { "dklen": 32, "salt": "...", "info": "ows-api-key-v1" }
+}
+```
+
+### Key creation flow
+
+```bash
+ows key create --name "claude-agent" --wallet agent-treasury --policy spending-limit
+```
+
+1. Owner enters wallet passphrase
+2. OWS decrypts the wallet mnemonic using scrypt(passphrase)
+3. Generates random token: `T = "ows_key_" + base62(random 256 bits)`
+4. Generates random salt S
+5. Derives key: `K = HKDF-SHA256(S, T, "ows-api-key-v1", 32)`
+6. Encrypts mnemonic with K via AES-256-GCM
+7. Stores key file with `token_hash: SHA256(T)`, policy IDs, and encrypted mnemonic copy
+8. Displays T once — owner provisions it to the agent
+9. Zeroizes mnemonic from memory
+
+### Agent signing flow
+
+```
+Agent calls: sign_transaction(wallet, chain, tx, "ows_key_a1b2c3...")
+
+1. Detect ows_key_ prefix → agent mode
+2. SHA256(token) → look up API key file
+3. Check expires_at (if set)
+4. Verify wallet is in key's wallet_ids scope
+5. Load policies from key's policy_ids
+6. Build PolicyContext(tx, chain, wallet, spending state, key_id)
+7. Evaluate all policies (AND semantics, short-circuit on first deny)
+8. If denied → return POLICY_DENIED error (key material never touched)
+9. HKDF-SHA256(salt, token) → AES key → decrypt mnemonic from key.wallet_secrets
+10. HD-derive chain-specific key
+11. Sign transaction
+12. Zeroize mnemonic and derived key
+13. Record spend in policy state
+14. Log to audit
+15. Return signature
+```
+
+### Revocation
+
+Delete the API key file. The encrypted mnemonic copy is gone. `SHA256(T)` matches nothing. The token is useless. The original wallet and other API keys are unaffected.
+
+### Security properties
+
+| Threat | Mitigation |
+|---|---|
+| Token stolen, no disk access | Useless — encrypted key file not accessible |
+| Disk access, no token | Can't decrypt — HKDF + AES-256-GCM |
+| Token + disk access | Can decrypt, but requires bypassing OWS process entirely |
+| Owner passphrase changed | API keys unaffected (independently encrypted) |
+| API key revoked | Encrypted copy deleted — token decrypts nothing |
+| Multiple API keys | Independent encrypted copies; revoking one doesn't affect others |
+
+## Declarative Policy Rules
+
+OWS provides five built-in rule types evaluated in-process (microseconds, no subprocess). These cover the common cases without requiring users to write executable policies.
+
+### `max_value_per_tx`
+
+Caps the `value` field of a single transaction.
+
+```json
+{ "type": "max_value_per_tx", "max_wei": "1000000000000000000" }
+```
+
+Parses `transaction.value` as a decimal string and denies if it exceeds the threshold. EVM-only initially (other chains' value encoding varies).
+
+### `daily_spending_limit`
+
+Caps cumulative spending across all transactions for an API key on a calendar day (UTC).
+
+```json
+{ "type": "daily_spending_limit", "max_wei": "10000000000000000000" }
+```
+
+Reads cumulative daily spend from `~/.ows/policy_state/`. Denies if adding the current transaction would exceed the cap. Resets at midnight UTC. State is per `(key_id, chain_id, date)` — different API keys have independent budgets.
+
+### `allowed_chains`
+
+Restricts which CAIP-2 chain IDs can be signed for.
+
+```json
+{ "type": "allowed_chains", "chain_ids": ["eip155:8453", "eip155:84532"] }
+```
+
+### `allowed_addresses`
+
+Restricts recipient addresses (EVM `to` field).
+
+```json
+{ "type": "allowed_addresses", "addresses": ["0x742d35Cc6634C0532925a3b844Bc9e7595f2bD0C"] }
+```
+
+Case-insensitive comparison (EIP-55 normalization). EVM-only initially.
+
+### `expires_at`
+
+Time-bound access.
+
+```json
+{ "type": "expires_at", "timestamp": "2026-04-01T00:00:00Z" }
+```
+
+## Custom Executable Policies
+
+For anything declarative rules can't express — on-chain simulation, external API calls, complex business logic. Custom executables are the escape hatch.
+
+### Protocol
 
 ```
 echo '<PolicyContext JSON>' | /path/to/policy-executable
 ```
 
-**Rules:**
 - The executable receives the full `PolicyContext` as a single JSON object on stdin
 - The executable MUST write a single `PolicyResult` JSON object to stdout
-- A non-zero exit code is treated as a denial (equivalent to `{ "allow": false, "reason": "process exited with code N" }`)
+- A non-zero exit code is treated as a denial
 - Stderr is captured and logged to the audit log but does not affect the verdict
+
+### Evaluation order within a policy
+
+A policy can have both `rules` (declarative) and `executable` (custom). When both are present:
+
+1. Declarative rules evaluate first (in-process, fast)
+2. If declarative rules deny → skip executable (no subprocess spawned)
+3. If declarative rules allow → spawn executable for final verdict
+4. Both must allow
+
+Declarative rules act as a fast pre-filter. The executable only runs for requests that pass basic checks.
 
 ## Policy File Format
 
@@ -71,15 +242,17 @@ Policies are JSON files stored in `~/.ows/policies/`:
 
 ```json
 {
-  "id": "safe-agent-policy",
-  "name": "Safe Agent Policy",
+  "id": "base-agent-limits",
+  "name": "Base Agent Safety Limits",
   "version": 1,
-  "created_at": "2026-02-27T10:00:00Z",
-  "executable": "/home/user/.ows/plugins/policies/safe-agent.sh",
-  "config": {
-    "max_daily_spend_wei": "1000000000000000000",
-    "allowed_chains": ["eip155:8453", "eip155:84532"]
-  },
+  "created_at": "2026-03-22T10:00:00Z",
+  "rules": [
+    { "type": "daily_spending_limit", "max_wei": "1000000000000000000" },
+    { "type": "allowed_chains", "chain_ids": ["eip155:8453", "eip155:84532"] },
+    { "type": "allowed_addresses", "addresses": ["0x742d35Cc6634C0532925a3b844Bc9e7595f2bD0C"] }
+  ],
+  "executable": null,
+  "config": null,
   "action": "deny"
 }
 ```
@@ -90,28 +263,30 @@ Policies are JSON files stored in `~/.ows/policies/`:
 | `name` | string | yes | Human-readable policy name |
 | `version` | integer | yes | Policy schema version (currently `1`) |
 | `created_at` | string | yes | ISO 8601 creation timestamp |
-| `executable` | string | yes | Absolute path to the policy executable |
-| `config` | object | no | Static configuration passed to the executable as part of `PolicyContext` |
+| `rules` | array | no | Declarative rules (see above). Evaluated in-process. |
+| `executable` | string | no | Absolute path to a custom policy executable |
+| `config` | object | no | Static configuration passed to the executable via `PolicyContext.policy_config` |
 | `action` | string | yes | `"deny"` or `"warn"` — what happens when the policy returns `allow: false` |
 
-The executable MUST be a file with execute permission. Implementations MUST verify the executable exists and is executable at policy attachment time.
+A policy MUST have at least one of `rules` or `executable`. If `executable` is set, it MUST be a file with execute permission. Implementations MUST verify the executable exists and is executable at policy creation time.
 
-## PolicyContext (stdin)
+## PolicyContext
 
-The JSON object piped to the policy executable's stdin:
+The JSON object available to both declarative evaluation and custom executables:
 
 ```json
 {
+  "operation": "sign_transaction",
   "transaction": {
-    "to": "0x4B0897b0513fdC7C541B6d9D7E929C4e5364D2dB",
-    "value": "1000000000000000",
-    "data": "0x"
+    "to": "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD0C",
+    "value": "100000000000000000",
+    "data": "0x",
+    "raw_hex": "02f8..."
   },
   "chain_id": "eip155:8453",
   "wallet": {
     "id": "3198bc9c-6672-5ab3-d995-4942343ae5b6",
     "name": "agent-treasury",
-    "chain_type": "evm",
     "accounts": [
       {
         "account_id": "eip155:8453:0xab16a96D359eC26a11e2C2b3d8f8B8942d5Bfcdb",
@@ -120,40 +295,41 @@ The JSON object piped to the policy executable's stdin:
       }
     ]
   },
-  "timestamp": "2026-02-27T10:35:22Z",
-  "api_key_id": "7a2f1b3c-4d5e-6f7a-8b9c-0d1e2f3a4b5c"
+  "timestamp": "2026-03-22T10:35:22Z",
+  "key_id": "7a2f1b3c-4d5e-6f7a-8b9c-0d1e2f3a4b5c",
+  "key_name": "claude-agent",
+  "spending": {
+    "daily_total_wei": "50000000000000000",
+    "daily_remaining_wei": "950000000000000000"
+  },
+  "policy_config": {}
 }
 ```
 
 | Field | Type | Always Present | Description |
 |---|---|---|---|
-| `transaction` | object | yes | The chain-specific serialized transaction being evaluated |
+| `operation` | string | yes | `"sign_transaction"`, `"sign_message"`, or `"sign_typed_data"` |
+| `transaction` | object | yes | Chain-specific transaction fields. EVM includes parsed `to`, `value`, `data`. All chains include `raw_hex`. |
 | `chain_id` | string | yes | CAIP-2 chain identifier |
-| `wallet` | object | yes | Wallet descriptor (id, name, chain_type, accounts — never key material) |
+| `wallet` | object | yes | Wallet descriptor (id, name, accounts — never key material) |
 | `timestamp` | string | yes | ISO 8601 timestamp of the signing request |
-| `api_key_id` | string | yes | The ID of the API key making this request |
+| `key_id` | string | yes | The ID of the API key making this request |
+| `key_name` | string | yes | Human-readable name of the API key |
+| `spending` | object | yes | Current spending state (daily total and remaining budget) |
+| `policy_config` | object | yes | Static `config` from the policy file (empty object if not set) |
 
-The `wallet` field never contains private keys, mnemonics, or encryption parameters. It is a subset of the wallet descriptor containing only public metadata.
+The `wallet` field never contains private keys, mnemonics, or encryption parameters.
 
-The policy executable can use `api_key_id` to apply per-agent logic (e.g., different spending limits for different agents). The static `config` from the policy file is resolved by the policy engine and merged into the executable's environment — it is not passed through `PolicyContext`.
+The `spending` field is populated by the policy engine from its state store. Custom executables can use it without managing their own state.
 
-## PolicyResult (stdout)
-
-The JSON object the policy executable writes to stdout:
+## PolicyResult
 
 ```json
-{
-  "allow": true
-}
+{ "allow": true }
 ```
 
-Or on denial:
-
 ```json
-{
-  "allow": false,
-  "reason": "Daily spending limit exceeded: 1.5 ETH sent, limit is 1.0 ETH"
-}
+{ "allow": false, "reason": "Daily spending limit exceeded: 0.95 / 1.0 ETH" }
 ```
 
 | Field | Type | Required | Description |
@@ -163,13 +339,16 @@ Or on denial:
 
 ## Timeout and Failure Semantics
 
+For custom executable policies only (declarative rules cannot fail in these ways):
+
 | Scenario | Behavior |
 |---|---|
 | Executable exits with code 0, valid JSON on stdout | Use the `PolicyResult` as the verdict |
 | Executable exits with non-zero code | **Deny.** Treat as `{ "allow": false }`. Stderr is logged. |
 | Executable does not produce valid JSON on stdout | **Deny.** Log a parse error to the audit log. |
 | Executable does not exit within 5 seconds | **Deny.** Kill the process. Log a timeout to the audit log. |
-| Executable not found or not executable | **Deny.** Log an error. This is checked at policy attachment time to fail early. |
+| Executable not found or not executable | **Deny.** Log an error. This is checked at policy creation time to fail early. |
+| Unknown declarative rule type | **Deny.** Fail closed on unrecognized rules. |
 
 The default-deny stance ensures that policy failures are never silently bypassed.
 
@@ -180,75 +359,97 @@ The default-deny stance ensures that policy failures are never silently bypassed
 | `deny` | Block the transaction and return a `POLICY_DENIED` error |
 | `warn` | Log a warning to the audit log but allow the transaction to proceed |
 
-## Who Is Evaluated?
-
-OWS uses a two-tier access model:
-
-| Caller | Authentication | Policy Evaluation |
-|---|---|---|
-| **Owner** | Passphrase/passkey | **None.** The owner has unrestricted (sudo) access to all wallets. No policies are evaluated. |
-| **Agent (API key)** | `ows_key_...` token | **All policies attached to the API key** are evaluated. Every policy must allow the transaction (AND semantics). |
-
-The owner can always sign any transaction on any wallet — if they want self-imposed limits, they create an API key for themselves and use that instead.
-
 ## Policy Attachment
 
 Policies are attached to API keys, not wallets. When an API key is created, it is scoped to specific wallets and policies:
 
 ```bash
 # Create a policy
-ows policy create --file safe-agent-policy.json
+ows policy create --file base-agent-limits.json
 
 # Create an API key with wallet scope and policy attachment
-ows key create --name "claude-agent" --wallet agent-treasury --policy safe-agent-policy
+ows key create --name "claude-agent" --wallet agent-treasury --policy base-agent-limits
 # => ows_key_a1b2c3d4e5f6...  (shown once, store securely)
 ```
 
 An API key can have multiple policies attached. All attached policies are evaluated — every policy must allow the transaction for it to proceed (AND semantics). Evaluation short-circuits on the first denial. All denials are logged to the audit log.
 
-## Example: Spending Limit Policy (Shell Script)
+## Spending State
 
-To illustrate the protocol, here is a minimal spending-limit policy implemented as a shell script. This is not a built-in type — it is a user-provided executable like any other policy.
+Daily spending limits require persistent, atomic state.
 
-```bash
-#!/usr/bin/env bash
-# spending-limit.sh — Deny transactions over 1 ETH (1e18 wei)
-set -euo pipefail
+### Storage
 
-MAX_WEI="1000000000000000000"
+```
+~/.ows/policy_state/
+  <key_id>/
+    spending-<chain_id>-<YYYY-MM-DD>.json
+```
 
-# Read PolicyContext from stdin
-CONTEXT=$(cat)
+```json
+{
+  "key_id": "7a2f1b3c-...",
+  "chain_id": "eip155:8453",
+  "date": "2026-03-22",
+  "total_wei": "150000000000000000",
+  "transactions": [
+    { "timestamp": "2026-03-22T10:35:22Z", "value_wei": "100000000000000000" },
+    { "timestamp": "2026-03-22T14:20:00Z", "value_wei": "50000000000000000" }
+  ]
+}
+```
 
-# Extract the transaction value (defaults to "0" if absent)
-VALUE=$(echo "$CONTEXT" | jq -r '.transaction.value // "0"')
+- State is per `(key_id, chain_id, date)` — different API keys have independent budgets
+- `flock(LOCK_EX)` for atomicity on read-modify-write
+- Spend recorded **after** signing succeeds, **before** broadcast (fail-safe)
+- Files older than 7 days garbage-collected on next policy evaluation
 
-# Compare (jq handles big-number string comparison)
-EXCEEDS=$(echo "$CONTEXT" | jq --arg max "$MAX_WEI" --arg val "$VALUE" \
-  '($val | tonumber) > ($max | tonumber)')
+## Example: Custom Simulation Policy
 
-if [ "$EXCEEDS" = "true" ]; then
-  echo '{"allow": false, "reason": "Transaction value exceeds 1 ETH limit"}'
-  exit 0
-fi
+```python
+#!/usr/bin/env python3
+"""Simulate transaction via eth_call before allowing."""
+import json, sys, urllib.request
 
-echo '{"allow": true}'
+ctx = json.load(sys.stdin)
+tx = ctx["transaction"]
+rpc = {"eip155:8453": "https://mainnet.base.org"}.get(ctx["chain_id"])
+if not rpc:
+    json.dump({"allow": False, "reason": f"No RPC for {ctx['chain_id']}"}, sys.stdout)
+    sys.exit(0)
+
+payload = json.dumps({
+    "jsonrpc": "2.0", "id": 1, "method": "eth_call",
+    "params": [{"to": tx["to"], "value": hex(int(tx["value"])), "data": tx["data"]}, "latest"]
+}).encode()
+try:
+    resp = json.load(urllib.request.urlopen(
+        urllib.request.Request(rpc, data=payload, headers={"Content-Type": "application/json"}), timeout=4))
+    if "error" in resp:
+        json.dump({"allow": False, "reason": f"Reverted: {resp['error']['message']}"}, sys.stdout)
+    else:
+        json.dump({"allow": True}, sys.stdout)
+except Exception as e:
+    json.dump({"allow": False, "reason": str(e)}, sys.stdout)
 ```
 
 The corresponding policy file:
 
 ```json
 {
-  "id": "spending-limit",
-  "name": "1 ETH Per-Transaction Limit",
+  "id": "simulate-tx",
+  "name": "EVM Transaction Simulation",
   "version": 1,
-  "created_at": "2026-02-27T10:00:00Z",
-  "executable": "/home/user/.ows/plugins/policies/spending-limit.sh",
+  "created_at": "2026-03-22T10:00:00Z",
+  "rules": [
+    { "type": "allowed_chains", "chain_ids": ["eip155:8453"] }
+  ],
+  "executable": "/home/user/.ows/plugins/policies/simulate.py",
   "action": "deny"
 }
 ```
 
-A more sophisticated spending-limit policy that tracks cumulative spending over time would maintain its own state file — that is an implementation detail of the policy executable, not a concern of the core spec.
+This policy uses declarative rules as a pre-filter (only Base) and the executable for simulation. If the chain check fails, the subprocess is never spawned.
 
 ## References
 

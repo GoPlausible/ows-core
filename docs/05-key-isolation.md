@@ -12,15 +12,13 @@
 | Zeroization on drop (`SecretBytes`) | Done | `zeroizing.rs` uses `zeroize` crate |
 | Signal handlers (SIGTERM/SIGINT/SIGHUP cleanup) | Done | `process_hardening.rs` |
 | Key cache with TTL + LRU eviction | Done | `ows-signer/src/key_cache.rs` (5s TTL, 32 entries) |
-| Subprocess signing enclave (child process) | Not started | Keys are decrypted in-process, not isolated |
-| Unix domain socket / pipe IPC | Not started | No enclave transport |
-| JSON-RPC enclave protocol (`sign`, `sign_message`, `unlock`, `lock`, `status`) | Not started | |
-| Passphrase delivery: interactive prompt | Not started | |
-| Passphrase delivery: file descriptor | Not started | |
+| Subprocess signing enclave (child process) | Future | Optional enhancement — not a prerequisite for policy enforcement |
+| Unix domain socket / pipe IPC | Future | |
 | Passphrase delivery: env var (`OWS_PASSPHRASE`) with immediate clear | Partial | Passphrase passed as param, not read from env |
-| Session-based unlock/lock | Not started | Each operation re-decrypts (or uses cache) |
 
-**Note:** The current implementation provides in-process hardening (mlock, zeroize, anti-debug) but does NOT implement the subprocess isolation model described in the spec. Keys are decrypted within the calling process's address space.
+**Note:** The current implementation provides in-process hardening (mlock, zeroize, anti-debug) but does NOT implement the subprocess isolation model described below. Keys are decrypted within the calling process's address space. Policy enforcement (see [03-policy-engine.md](03-policy-engine.md)) is handled by the code path, not by process isolation.
+
+The subprocess enclave is an **optional future enhancement** for key exfiltration prevention. It is not required for policy enforcement, API key support, or any other currently planned feature. See [Current Model vs Future Enclave](#current-model-vs-future-enclave) below.
 
 ## Design Decision
 
@@ -198,7 +196,51 @@ The vault `unlock` operation (see [Enclave Protocol](#enclave-protocol)) also es
 | Phala Wallet | TEE (Intel SGX) on decentralized cloud | No (cloud) |
 | **OWS** | **OS process isolation + optional TEE** | **Yes** |
 
-OWS is the only standard designed for local-first operation. The subprocess model works on any machine — no cloud accounts, no network connectivity, no hardware enclaves required. When stronger guarantees are needed, the enclave can be upgraded without changing the interface.
+OWS is the only standard designed for local-first operation. The in-process model works on any machine with no additional infrastructure. When stronger guarantees are needed, the subprocess enclave can be added without changing the signing interface.
+
+## Current Model vs Future Enclave
+
+### Current: in-process hardening + code-path policy enforcement
+
+```
+Agent → sign_transaction(wallet, chain, tx, "ows_key_...")
+          │
+          └─► ows-lib (same process)
+                ├── token lookup + policy evaluation
+                ├── HKDF decrypt mnemonic (mlock'd, zeroized on drop)
+                ├── sign
+                └── return signature
+```
+
+Policy enforcement is handled by the code path — the `ows_key_` credential triggers policy evaluation before decryption. The agent and signer share an address space. In-process hardening (mlock, zeroize, anti-ptrace, anti-coredump) reduces the window for key extraction but does not eliminate it.
+
+**This model defends against:** prompt injection, runaway agents, misconfigured agents, accidental overspending — the primary threats for agent wallets.
+
+**This model does not defend against:** a compromised agent binary reading decrypted key material from shared memory.
+
+### Future: per-request subprocess enclave
+
+```
+Agent → sign_transaction(wallet, chain, tx, "ows_key_...")
+          │
+          └─► ows-lib (parent process)
+                ├── token lookup + policy evaluation
+                └── fork/exec ows-enclave
+                      ├── receive (token, wallet_id, tx) over stdin
+                      ├── HKDF decrypt mnemonic
+                      ├── sign
+                      ├── zeroize
+                      ├── write signature to stdout
+                      └── exit
+```
+
+The decrypt→sign→wipe path moves to a child process. The parent (agent's process) never has the mnemonic in its address space. The child is stateless — spawned per request, no daemon, no unlock step. If it crashes, the next request spawns a new one.
+
+This uses the same Approach B crypto (HKDF token → AES-256-GCM). The only change is which process runs the decryption. It is a mechanical refactor, not a design change.
+
+**Additional defense:** even if the agent binary is compromised, it cannot extract key material from the parent process because the key material only exists in the child's address space.
+
+**Not a prerequisite for:** policy enforcement, API keys, or any other feature in the current roadmap. It can be layered on independently.
 
 ## References
 
