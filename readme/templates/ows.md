@@ -1,6 +1,8 @@
+<!-- Generated from readme/templates/ows.md + readme/partials/ — edit those, then run readme/generate.sh -->
+
 # OWS — Open Wallet Standard
 
-Rust implementation of the [Open Wallet Standard](https://openwalletstandard.org) for secure, local-first crypto wallet management.
+Rust implementation of the [Open Wallet Standard](https://openwallet.sh) for secure, local-first crypto wallet management.
 
 ## Quick Install
 
@@ -33,7 +35,7 @@ The bindings are **standalone** — they embed the Rust core via native FFI. No 
 import { createWallet, signMessage } from "@open-wallet-standard/core";
 
 const wallet = createWallet("my-wallet");
-console.log(wallet.accounts); // addresses for EVM, Solana, Sui, Bitcoin, Cosmos, Tron
+console.log(wallet.accounts); // addresses for EVM, Solana, Sui, Bitcoin, Cosmos, Tron, TON, Spark, Filecoin
 
 const sig = signMessage("my-wallet", "evm", "hello");
 console.log(sig.signature);
@@ -44,7 +46,7 @@ console.log(sig.signature);
 | Crate | Description |
 |-------|-------------|
 | `ows-core` | Types, CAIP-2/10 parsing, errors, config. Zero crypto dependencies. |
-| `ows-signer` | ChainSigner trait, HD derivation, address derivation for EVM, Solana, Sui, Bitcoin, Cosmos, and Tron. |
+| `ows-signer` | ChainSigner trait, HD derivation, address derivation for EVM, Solana, Sui, Bitcoin, Cosmos, Tron, TON, Spark, and Filecoin. |
 | `ows-lib` | Library interface used by language bindings and the CLI. |
 | `ows-cli` | The `ows` command-line tool. |
 
@@ -56,6 +58,9 @@ console.log(sig.signature);
 - **Bitcoin** — secp256k1, BIP-84 native segwit (bech32)
 - **Cosmos** — secp256k1, bech32 addresses (configurable HRP)
 - **Tron** — secp256k1, base58check addresses
+- **TON** — Ed25519, raw/bounceable addresses
+- **Spark** (Bitcoin L2) — secp256k1, spark: prefixed addresses
+- **Filecoin** — secp256k1, f1 base32 addresses
 
 ## License
 
