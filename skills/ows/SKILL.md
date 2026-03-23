@@ -60,7 +60,7 @@ Use this skill when the user asks to:
 
 ```bash
 # CLI (one-liner)
-curl -fsSL https://openwallet.sh/install.sh | bash
+curl -fsSL https://docs.openwallet.sh/install.sh | bash
 
 # Node.js SDK (global install also provides the ows CLI)
 npm install @open-wallet-standard/core
