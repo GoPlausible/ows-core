@@ -74,10 +74,16 @@ impl Config {
             "https://s.devnet.rippletest.net:51234".into(),
         );
         rpc.insert("nano:mainnet".into(), "https://rpc.nano.to".into());
+<<<<<<< HEAD
         rpc.insert("eip155:4217".into(), "https://rpc.tempo.xyz".into());
         rpc.insert(
             "eip155:999".into(),
             "https://rpc.hyperliquid.xyz/evm".into(),
+=======
+        rpc.insert(
+            "avm:mainnet".into(),
+            "https://mainnet-api.algonode.cloud".into(),
+>>>>>>> 9659d24 (feat: add Algorand chain support)
         );
         rpc
     }
@@ -264,7 +270,11 @@ mod tests {
     fn test_load_or_default_nonexistent() {
         let config = Config::load_or_default_from(std::path::Path::new("/nonexistent/config.json"));
         // Should have all default RPCs
+<<<<<<< HEAD
         assert_eq!(config.rpc.len(), 21);
+=======
+        assert_eq!(config.rpc.len(), 20);
+>>>>>>> 9659d24 (feat: add Algorand chain support)
         assert_eq!(config.rpc_url("eip155:1"), Some("https://eth.llamarpc.com"));
     }
 
