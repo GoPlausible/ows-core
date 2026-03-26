@@ -184,10 +184,14 @@ mod tests {
         let address = AvmSigner::encode_address(&pubkey_bytes);
         // Algorand address: 58 characters, uppercase base32
         assert_eq!(address.len(), 58);
-        assert!(address.chars().all(|c| "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".contains(c)));
+        assert!(address
+            .chars()
+            .all(|c| "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".contains(c)));
 
         // Verify roundtrip: decode address, extract pubkey, re-encode
-        let decoded = data_encoding::BASE32_NOPAD.decode(address.as_bytes()).unwrap();
+        let decoded = data_encoding::BASE32_NOPAD
+            .decode(address.as_bytes())
+            .unwrap();
         assert_eq!(&decoded[..32], pubkey_bytes.as_slice());
         // Last 4 bytes should be checksum
         let hash = sha2::Sha512_256::digest(&pubkey_bytes);
@@ -221,14 +225,13 @@ mod tests {
 
         // Verify using ed25519-dalek
         let pubkey = result.public_key.as_ref().unwrap();
-        let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(
-            &pubkey.clone().try_into().unwrap()
-        ).unwrap();
-        let sig = ed25519_dalek::Signature::from_bytes(
-            &result.signature.try_into().unwrap()
-        );
+        let verifying_key =
+            ed25519_dalek::VerifyingKey::from_bytes(&pubkey.clone().try_into().unwrap()).unwrap();
+        let sig = ed25519_dalek::Signature::from_bytes(&result.signature.try_into().unwrap());
         use ed25519_dalek::Verifier;
-        verifying_key.verify(message, &sig).expect("signature should verify");
+        verifying_key
+            .verify(message, &sig)
+            .expect("signature should verify");
     }
 
     #[test]
@@ -276,7 +279,9 @@ mod tests {
             recovery_id: None,
             public_key: Some(vec![0u8; 32]),
         };
-        let result = signer.encode_signed_transaction(b"tx", &sig_output).unwrap();
+        let result = signer
+            .encode_signed_transaction(b"tx", &sig_output)
+            .unwrap();
         assert_eq!(result.len(), 64);
     }
 }
