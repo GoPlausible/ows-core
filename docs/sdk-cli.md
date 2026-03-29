@@ -44,7 +44,7 @@ Created wallet 3198bc9c-...
   bip122:000000000019d6689c085ae165831e93   bc1q...    m/84'/0'/0'/0/0
   cosmos:cosmoshub-4                     cosmos1... m/44'/118'/0'/0/0
   tron:mainnet                           TKLm...    m/44'/195'/0'/0/0
-  xrpl:testnet                           rHsM...    m/44'/144'/0'/0/0
+  xrpl:mainnet                           rHsM...    m/44'/144'/0'/0/0
 ```
 
 ### `ows wallet import`

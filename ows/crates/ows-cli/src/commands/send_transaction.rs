@@ -38,7 +38,7 @@ pub fn run(
         return Ok(());
     }
 
-    // Owner mode: resolve key directly and sign → encode → broadcast.
+    // Owner mode: resolve key directly (existing behavior)
     let chain = parse_chain(chain_str)?;
     let key = super::resolve_signing_key(wallet_name, chain.chain_type, index)?;
 

@@ -114,7 +114,7 @@ console.log(wallet.accounts);
 //   { chainId: "tron:mainnet", address: "TKLm...", derivationPath: "m/44'/195'/0'/0/0" },
 //   { chainId: "ton:mainnet", address: "UQ...", derivationPath: "m/44'/607'/0'" },
 //   { chainId: "sui:mainnet", address: "0x...", derivationPath: "m/44'/784'/0'/0'/0'" },
-//   { chainId: "xrpl:testnet", address: "r...", derivationPath: "m/44'/144'/0'/0/0" },
+//   { chainId: "xrpl:mainnet", address: "r...", derivationPath: "m/44'/144'/0'/0/0" },
 //   { chainId: "fil:mainnet", address: "f1...", derivationPath: "m/44'/461'/0'/0/0" },
 // ]
 ```
