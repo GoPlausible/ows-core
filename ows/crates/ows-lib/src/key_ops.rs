@@ -247,6 +247,26 @@ pub fn sign_typed_data_with_api_key(
     // 5. Parse typed data early — validates JSON and extracts domain fields
     let parsed = eip712::parse_typed_data(typed_data_json)?;
 
+    // 5b. Validate domain.chainId matches the requested chain (if present)
+    // Prevents bypassing AllowedChains by submitting typed data with a different chainId
+    if let Some(domain_chain_id) = parsed
+        .domain
+        .get("chainId")
+        .and_then(|v| v.as_str().and_then(|s| s.parse::<u64>().ok()).or_else(|| v.as_u64()))
+    {
+        let expected_chain_id = chain
+            .chain_id
+            .split(':')
+            .nth(1)
+            .and_then(|s| s.parse::<u64>().ok());
+        if expected_chain_id != Some(domain_chain_id) {
+            return Err(OwsLibError::InvalidInput(format!(
+                "EIP-712 domain chainId ({}) does not match requested chain ({})",
+                domain_chain_id, chain.chain_id,
+            )));
+        }
+    }
+
     // 6. Build PolicyContext with TypedDataContext
     let policies = load_policies_for_key(&key_file, vault_path)?;
     let now = chrono::Utc::now();
@@ -1066,5 +1086,47 @@ mod tests {
             OwsLibError::InvalidInput(msg) => { assert!(msg.contains("does not have access")); }
             other => panic!("expected InvalidInput, got: {other}"),
         }
+    }
+
+    #[test]
+    fn sign_typed_data_with_api_key_chain_mismatch_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path().to_path_buf();
+        let passphrase = "test-pass";
+        let wallet_id = setup_test_wallet(&vault, passphrase);
+        // Policy allows Base (eip155:8453) — use a policy WITHOUT AllowedTypedDataContracts
+        // so the only gate is AllowedChains
+        let policy_id = setup_test_policy(&vault); // allows eip155:8453
+        let (token, _) = create_api_key(
+            "agent", &[wallet_id], &[policy_id], passphrase, None, Some(&vault),
+        ).unwrap();
+
+        // Typed data has domain.chainId = 1 (mainnet), but we request chain = base (8453)
+        let mismatched_td = serde_json::json!({
+            "types": {
+                "EIP712Domain": [
+                    {"name": "name", "type": "string"},
+                    {"name": "chainId", "type": "uint256"},
+                    {"name": "verifyingContract", "type": "address"}
+                ],
+                "Permit": [{"name": "spender", "type": "address"}]
+            },
+            "primaryType": "Permit",
+            "domain": {
+                "name": "Token",
+                "chainId": "1",
+                "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+            },
+            "message": {"spender": "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD0C"}
+        }).to_string();
+
+        let chain = ows_core::parse_chain("base").unwrap(); // eip155:8453
+        let result = sign_typed_data_with_api_key(
+            &token, "test-wallet", &chain, &mismatched_td, None, Some(&vault),
+        );
+
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("domain chainId"), "expected chain mismatch error, got: {err_msg}");
     }
 }
