@@ -1,5 +1,6 @@
 """Tests for ows Python bindings."""
 
+import copy
 import json
 import tempfile
 import pytest
@@ -192,7 +193,6 @@ def test_sign_typed_data_with_api_key(vault_dir):
     # Sign on denied chain -- should fail
     # Build typed data with chainId=1 matching ethereum so the domain check passes
     # and AllowedChains (base-only) correctly denies
-    import copy
     eth_td = copy.deepcopy(json.loads(typed_data_json))
     eth_td["domain"]["chainId"] = 1
     eth_typed_data_json = json.dumps(eth_td)
