@@ -44,7 +44,7 @@ Created wallet 3198bc9c-...
   bip122:000000000019d6689c085ae165831e93   bc1q...    m/84'/0'/0'/0/0
   cosmos:cosmoshub-4                     cosmos1... m/44'/118'/0'/0/0
   tron:mainnet                           TKLm...    m/44'/195'/0'/0/0
-  xrpl:mainnet                           rHsM...    m/44'/144'/0'/0/0
+  algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73k  PPNH...    m/44'/283'/0'/0/0
 ```
 
 ### `ows wallet import`
@@ -197,7 +197,7 @@ Lists all keys with ID, name, wallets, policies, and creation time. Tokens are n
 ows key revoke --id <key-id> --confirm
 ```
 
-Deletes the key file. The encrypted secret copy is gone — the token becomes useless.
+Deletes the key file. The encrypted mnemonic copy is gone — the token becomes useless.
 
 ## End-to-End Example: Agent Access
 
@@ -251,23 +251,13 @@ ows key revoke --id <key-id> --confirm
 Sign a message with chain-specific formatting (e.g., EIP-191 for EVM, `\x19TRON Signed Message` for Tron).
 
 ```bash
-# EVM (Ethereum mainnet)
-ows sign message --wallet "my-wallet" --chain ethereum --message "hello world"
-
-# Solana
-ows sign message --wallet "my-wallet" --chain solana --message "hello world"
-
-# Bitcoin
-ows sign message --wallet "my-wallet" --chain bitcoin --message "hello world"
-
-# Base via bare chain ID
-ows sign message --wallet "my-wallet" --chain 8453 --message "hello world"
+ows sign message --wallet "my-wallet" --chain evm --message "hello world"
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--wallet <NAME>` | Wallet name or ID |
-| `--chain <CHAIN>` | Chain name (`ethereum`, `base`, `arbitrum`, …), CAIP-2 ID (`eip155:8453`), or bare EVM chain ID (`8453`) |
+| `--chain <CHAIN>` | Chain family or supported alias / CAIP-2 ID |
 | `--message <MSG>` | Message to sign |
 | `--encoding <ENC>` | Message encoding: `utf8` (default) or `hex` |
 | `--typed-data <JSON>` | EIP-712 typed data JSON (EVM only) |
@@ -278,14 +268,13 @@ ows sign message --wallet "my-wallet" --chain 8453 --message "hello world"
 Sign a raw transaction (hex-encoded bytes).
 
 ```bash
-ows sign tx --wallet "my-wallet" --chain ethereum --tx "02f8..."
-ows sign tx --wallet "my-wallet" --chain solana --tx "deadbeef..."
+ows sign tx --wallet "my-wallet" --chain evm --tx "02f8..."
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--wallet <NAME>` | Wallet name or ID |
-| `--chain <CHAIN>` | Chain name (`ethereum`, `base`, `arbitrum`, …), CAIP-2 ID (`eip155:8453`), or bare EVM chain ID (`8453`) |
+| `--chain <CHAIN>` | Chain family or supported alias / CAIP-2 ID |
 | `--tx <HEX>` | Hex-encoded transaction bytes |
 | `--json` | Output structured JSON |
 
@@ -306,7 +295,7 @@ ows mnemonic generate --words 24
 Derive an address from a mnemonic for a given chain. Reads the mnemonic from the `OWS_MNEMONIC` environment variable or stdin.
 
 ```bash
-echo "word1 word2 ..." | ows mnemonic derive --chain ethereum
+echo "word1 word2 ..." | ows mnemonic derive --chain evm
 ```
 
 ## Payment Commands

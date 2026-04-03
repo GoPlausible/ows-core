@@ -92,7 +92,7 @@ const solAddr = deriveAddress(mnemonic, "solana");
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `mnemonic` | `string` | &mdash; | BIP-39 mnemonic phrase |
-| `chain` | `string` | &mdash; | `"evm"`, `"solana"`, `"xrpl"`, `"sui"`, `"bitcoin"`, `"cosmos"`, `"tron"`, `"filecoin"` |
+| `chain` | `string` | &mdash; | `"evm"`, `"solana"`, `"sui"`, `"bitcoin"`, `"cosmos"`, `"tron"`, `"filecoin"`, `"algorand"` |
 | `index` | `number` | `0` | Account index in derivation path |
 
 **Returns:** `string`
@@ -114,7 +114,6 @@ console.log(wallet.accounts);
 //   { chainId: "tron:mainnet", address: "TKLm...", derivationPath: "m/44'/195'/0'/0/0" },
 //   { chainId: "ton:mainnet", address: "UQ...", derivationPath: "m/44'/607'/0'" },
 //   { chainId: "sui:mainnet", address: "0x...", derivationPath: "m/44'/784'/0'/0'/0'" },
-//   { chainId: "xrpl:mainnet", address: "r...", derivationPath: "m/44'/144'/0'/0/0" },
 //   { chainId: "fil:mainnet", address: "f1...", derivationPath: "m/44'/461'/0'/0/0" },
 // ]
 ```
@@ -208,7 +207,7 @@ Alternatively, provide explicit keys for each curve via `secp256k1Key` and `ed25
 ```javascript
 // Import an EVM private key — generates a random Ed25519 key for Solana/Sui/TON
 const wallet = importWalletPrivateKey("from-evm", "4c0883a691...");
-console.log(wallet.accounts.length); // => 9
+console.log(wallet.accounts.length); // => 8
 
 // Import a Solana private key — generates a random secp256k1 key for EVM/BTC/etc.
 const wallet2 = importWalletPrivateKey(
@@ -231,7 +230,7 @@ console.log(wallet3.accounts.length); // => 8
 | `privateKeyHex` | `string` | &mdash; | Hex-encoded private key (with or without `0x` prefix). Ignored when both curve keys are provided. |
 | `passphrase` | `string` | `undefined` | Encryption passphrase |
 | `vaultPath` | `string` | `~/.ows` | Custom vault directory root |
-| `chain` | `string` | `"evm"` | Source chain: `"evm"`, `"bitcoin"`, `"cosmos"`, `"tron"`, `"filecoin"` (secp256k1) or `"solana"`, `"sui"`, `"ton"` (Ed25519) |
+| `chain` | `string` | `"evm"` | Source chain: `"evm"`, `"bitcoin"`, `"cosmos"`, `"tron"`, `"filecoin"` (secp256k1) or `"solana"`, `"sui"`, `"ton"` (Ed25519) or `"algorand"` (BIP32-Ed25519) |
 | `secp256k1Key` | `string` | `undefined` | Explicit secp256k1 private key (hex). Overrides random generation for secp256k1 chains. |
 | `ed25519Key` | `string` | `undefined` | Explicit Ed25519 private key (hex). Overrides random generation for Ed25519 chains. |
 
@@ -264,6 +263,8 @@ console.log(result.recoveryId); // 0 or 1
 #### `signTypedData(wallet, chain, typedDataJson, passphrase?, index?, vaultPath?)`
 
 Sign EIP-712 typed structured data (EVM only).
+
+Current implementations support typed-data signing for owner-mode credentials. API-token typed-data signing is not yet supported.
 
 ```javascript
 const typedData = JSON.stringify({

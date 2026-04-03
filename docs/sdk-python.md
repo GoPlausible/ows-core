@@ -92,7 +92,7 @@ sol_addr = derive_address(mnemonic, "solana")
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `mnemonic` | `str` | &mdash; | BIP-39 mnemonic phrase |
-| `chain` | `str` | &mdash; | `"evm"`, `"solana"`, `"xrpl"`, `"sui"`, `"bitcoin"`, `"cosmos"`, `"tron"`, `"ton"`, `"spark"`, `"filecoin"` |
+| `chain` | `str` | &mdash; | `"evm"`, `"solana"`, `"sui"`, `"bitcoin"`, `"cosmos"`, `"tron"`, `"ton"`, `"spark"`, `"filecoin"`, `"algorand"` |
 | `index` | `int` | `0` | Account index in derivation path |
 
 ### Wallet Management
@@ -179,13 +179,13 @@ Alternatively, provide explicit keys for each curve via `secp256k1_key` and `ed2
 ```python
 # Import an EVM private key — generates a random Ed25519 key for Solana/Sui/TON
 wallet = import_wallet_private_key("from-evm", "4c0883a691...")
-print(len(wallet["accounts"]))  # => 9
+print(len(wallet["accounts"]))  # => 8
 
 # Import a Solana private key — generates a random secp256k1 key for EVM/BTC/etc.
 wallet = import_wallet_private_key(
     "from-solana", "9d61b19d...", chain="solana"
 )
-print(len(wallet["accounts"]))  # => 9
+print(len(wallet["accounts"]))  # => 8
 
 # Import explicit keys for both curves
 wallet = import_wallet_private_key(
@@ -193,14 +193,14 @@ wallet = import_wallet_private_key(
     secp256k1_key="4c0883a691...",
     ed25519_key="9d61b19d..."
 )
-print(len(wallet["accounts"]))  # => 9
+print(len(wallet["accounts"]))  # => 8
 ```
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `name` | `str` | &mdash; | Wallet name |
 | `private_key_hex` | `str` | &mdash; | Hex-encoded private key. Ignored when both curve keys are provided. |
-| `chain` | `str` | `"evm"` | Source chain: `"evm"`, `"bitcoin"`, `"cosmos"`, `"tron"`, `"filecoin"` (secp256k1) or `"solana"`, `"sui"`, `"ton"` (Ed25519) |
+| `chain` | `str` | `"evm"` | Source chain: `"evm"`, `"bitcoin"`, `"cosmos"`, `"tron"`, `"filecoin"` (secp256k1) or `"solana"`, `"sui"`, `"ton"` (Ed25519) or `"algorand"` (BIP32-Ed25519) |
 | `passphrase` | `str` | `None` | Encryption passphrase |
 | `vault_path` | `str` | `None` | Custom vault directory |
 | `secp256k1_key` | `str` | `None` | Explicit secp256k1 private key (hex) |
@@ -221,6 +221,8 @@ print(result["recovery_id"]) # 0 or 1
 #### `sign_typed_data(wallet, chain, typed_data_json, passphrase=None, index=None, vault_path=None)`
 
 Sign EIP-712 typed structured data (EVM only).
+
+Current implementations support typed-data signing for owner-mode credentials. API-token typed-data signing is not yet supported.
 
 ```python
 import json
