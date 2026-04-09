@@ -469,7 +469,6 @@ mod integration_tests {
         let seed = algo_seed();
         let key =
             HdDeriver::derive(seed.expose(), "m/44'/283'/0'/0/0", Curve::Ed25519Bip32).unwrap();
-        let key = HdDeriver::derive(seed.expose(), "m/44'/283'/0'/0/0", Curve::Ed25519Bip32).unwrap();
         let signer = signer_for_chain(ChainType::Avm);
 
         let message = b"test message";
