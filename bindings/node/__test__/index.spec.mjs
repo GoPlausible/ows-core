@@ -27,7 +27,7 @@ import {
   revokeApiKey,
 } from '../index.js';
 
-describe('@open-wallet-standard/core', () => {
+describe('@goplausible/ows-core', () => {
   let vaultDir;
 
   before(() => {

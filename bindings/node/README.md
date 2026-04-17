@@ -1,10 +1,10 @@
 <!-- Generated from readme/templates/node.md + readme/partials/ — edit those, then run readme/generate.sh -->
 
-# @open-wallet-standard/core
+# @goplausible/ows-core
 
 Local, policy-gated signing and wallet management for every chain.
 
-[![npm](https://img.shields.io/npm/v/@open-wallet-standard/core)](https://www.npmjs.com/package/@open-wallet-standard/core)
+[![npm](https://img.shields.io/npm/v/@goplausible/ows-core)](https://www.npmjs.com/package/@goplausible/ows-core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/open-wallet-standard/core/blob/main/LICENSE)
 
 ## Why OWS
@@ -17,8 +17,8 @@ Local, policy-gated signing and wallet management for every chain.
 ## Install
 
 ```bash
-npm install @open-wallet-standard/core    # Node.js SDK
-npm install -g @open-wallet-standard/core # Node.js SDK + CLI (provides `ows` command)
+npm install @goplausible/ows-core    # Node.js SDK
+npm install -g @goplausible/ows-core # Node.js SDK + CLI (provides `ows` command)
 ```
 
 The package is **fully self-contained** — it embeds the Rust core via native FFI. Installing globally with `-g` also provides the `ows` CLI.
@@ -26,7 +26,7 @@ The package is **fully self-contained** — it embeds the Rust core via native F
 ## Quick Start
 
 ```javascript
-import { createWallet, signMessage } from "@open-wallet-standard/core";
+import { createWallet, signMessage } from "@goplausible/ows-core";
 
 const wallet = createWallet("agent-treasury");
 // => accounts for EVM, Solana, Bitcoin, Cosmos, Tron, TON, Filecoin, Sui, XRPL, and Algorand

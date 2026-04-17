@@ -1,5 +1,5 @@
 {
-  "name": "@open-wallet-standard/core",
+  "name": "@goplausible/ows-core",
   "version": "1.2.4",
   "description": "Node.js native bindings for the Open Wallet Standard",
   "main": "index.js",
@@ -31,10 +31,10 @@
     "@napi-rs/cli": "^2.18.0"
   },
   "optionalDependencies": {
-    "@open-wallet-standard/core-linux-x64-gnu": "1.2.4",
-    "@open-wallet-standard/core-linux-arm64-gnu": "1.2.4",
-    "@open-wallet-standard/core-darwin-x64": "1.2.4",
-    "@open-wallet-standard/core-darwin-arm64": "1.2.4"
+    "@goplausible/ows-core-linux-x64-gnu": "1.2.4",
+    "@goplausible/ows-core-linux-arm64-gnu": "1.2.4",
+    "@goplausible/ows-core-darwin-x64": "1.2.4",
+    "@goplausible/ows-core-darwin-arm64": "1.2.4"
   },
   "license": "MIT",
   "files": [

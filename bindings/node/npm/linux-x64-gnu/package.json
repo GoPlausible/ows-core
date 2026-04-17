@@ -1,5 +1,5 @@
 {
-  "name": "@open-wallet-standard/core-linux-x64-gnu",
+  "name": "@goplausible/ows-core-linux-x64-gnu",
   "version": "1.2.4",
   "os": [
     "linux"

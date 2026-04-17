@@ -7,19 +7,19 @@ const { platform, arch } = process;
 
 const PLATFORM_MAP = {
   "darwin-arm64": {
-    pkg: "@open-wallet-standard/core-darwin-arm64",
+    pkg: "@goplausible/ows-core-darwin-arm64",
     bin: "ows",
   },
   "darwin-x64": {
-    pkg: "@open-wallet-standard/core-darwin-x64",
+    pkg: "@goplausible/ows-core-darwin-x64",
     bin: "ows",
   },
   "linux-x64": {
-    pkg: "@open-wallet-standard/core-linux-x64-gnu",
+    pkg: "@goplausible/ows-core-linux-x64-gnu",
     bin: "ows",
   },
   "linux-arm64": {
-    pkg: "@open-wallet-standard/core-linux-arm64-gnu",
+    pkg: "@goplausible/ows-core-linux-arm64-gnu",
     bin: "ows",
   },
 };
